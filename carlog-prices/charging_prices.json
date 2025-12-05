@@ -1,0 +1,111 @@
+[
+  {
+    "id": "zes",
+    "name": "ZES (Zorlu Energy)",
+    "keywords": ["zes", "zorlu", "zorlu enerji"],
+    "website": "https://zes.net/tr/fiyatlandirma",
+    "tariffs": {
+      "ac": 8.99,
+      "dc_low": 11.99,
+      "dc_high": 13.99,
+      "note": "DC Düşük: <60kW, DC Yüksek: >60kW"
+    }
+  },
+  {
+    "id": "esarj",
+    "name": "Eşarj (Enerjisa)",
+    "keywords": ["esarj", "eşarj", "enerjisa"],
+    "website": "https://esarj.com/fiyatlandirma",
+    "tariffs": {
+      "ac": 8.95,
+      "dc_low": 11.50,
+      "dc_high": 13.50,
+      "note": "DC: 60kW altı ve üstü olarak değişir"
+    }
+  },
+  {
+    "id": "trugo",
+    "name": "Trugo (Togg)",
+    "keywords": ["trugo", "togg", "turkcell"],
+    "website": "https://www.trugo.com.tr/price",
+    "tariffs": {
+      "dc_low": 10.50,
+      "dc_high": 12.50,
+      "note": "180 kW altı ve üstü"
+    }
+  },
+  {
+    "id": "voltrun",
+    "name": "Voltrun",
+    "keywords": ["voltrun", "zebra"],
+    "website": "https://www.voltrun.com/voltrun-uyelik-tarife/",
+    "tariffs": {
+      "ac": 9.00,
+      "dc": 12.50,
+      "note": "İstasyon sahibine göre değişebilir"
+    }
+  },
+  {
+    "id": "sharz",
+    "name": "Sharz.net",
+    "keywords": ["sharz", "sharz.net"],
+    "website": "https://www.sharz.net/tarifeler",
+    "tariffs": {
+      "ac": 8.50,
+      "dc": 12.00
+    }
+  },
+  {
+    "id": "tesla",
+    "name": "Tesla Supercharger",
+    "keywords": ["tesla", "supercharger"],
+    "website": "https://www.tesla.com/tr_tr/support/charging/supercharger/fees",
+    "tariffs": {
+      "dc": 10.80,
+      "note": "Tesla sahipleri için daha ucuz, diğer araçlar için farklıdır"
+    }
+  },
+  {
+    "id": "beefull",
+    "name": "Beefull",
+    "keywords": ["beefull"],
+    "website": "https://beefull.com/tarifeler/elektrikli-arac-tarifesi/",
+    "tariffs": {
+      "ac": 9.50,
+      "dc": 13.00
+    }
+  },
+  {
+    "id": "astor",
+    "name": "Astor Şarj",
+    "keywords": ["astor", "astower"],
+    "website": "https://e-aracsarj.com/marka/astor-sarj",
+    "tariffs": {
+      "ac": 8.00,
+      "dc": 11.50
+    }
+  },
+  {
+    "id": "tuncmatik",
+    "name": "Tunçmatik Charge",
+    "keywords": ["tuncmatik", "tunçmatik", "charge"],
+    "website": "https://tuncmatikcharge.com/fiyatlar/",
+    "tariffs": {
+      "ac": 8.90,
+      "dc": 11.90
+    }
+  },
+  {
+    "id": "shell",
+    "name": "Shell Recharge",
+    "keywords": ["shell recharge", "shell"],
+    "website": "https://www.shell.com.tr/suruculer/shell-recharge-turkiye/fiyat-tarifesi.html",
+    "tariffs": {
+      "ac": 9.99,
+      "dc_low": 12.99,
+      "dc_high": 14.99,
+      "note": "Shell genelde piyasanın biraz üzerindedir"
+    }
+  }
+]
+
