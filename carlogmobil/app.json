@@ -1,0 +1,136 @@
+{
+  "expo": {
+    "name": "CarLog",
+    "slug": "carlog",
+    "version": "1.0.6",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "carlog",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.tolgaoztrk.carlog",
+      "buildNumber": "5",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "CFBundleDevelopmentRegion": "en",
+        "CFBundleLocalizations": ["en", "tr"],
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        },
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Location permission is required to show nearby gas and charging stations.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Location permission is required to show nearby gas and charging stations.",
+        "UIBackgroundModes": [
+          "remote-notification"
+        ]
+      },
+      "usesAppleSignIn": false,
+      "associatedDomains": [
+        "applinks:carlog.app"
+      ]
+    },
+    "android": {
+      "package": "com.tolgaoztrk.carlog",
+      "adaptiveIcon": {
+        "backgroundColor": "#F6F8FB",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundImage": "./assets/images/android-icon-background.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "POST_NOTIFICATIONS"
+      ],
+      "googleServicesFile": "./google-services.json"
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#3B82F6",
+          "sounds": [],
+          "mode": "production",
+          "iosDisplayInForeground": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Location permission is required to show nearby gas and charging stations.",
+          "locationWhenInUsePermission": "Location permission is required to show nearby gas and charging stations."
+        }
+      ],
+      [
+        "react-native-google-mobile-ads",
+        {
+          "androidAppId": "ca-app-pub-6346259754086027~6061550854",
+          "iosAppId": "ca-app-pub-6346259754086027~6061550854"
+        }
+      ],
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          },
+          "ios": {
+            "deploymentTarget": "16.0"
+          }
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Camera access is required to scan your fuel receipts and automatically record your fuel consumption data. This helps you track your vehicle expenses more easily."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c6d76568-0642-4562-8c0a-44e698bc9cdd"
+      },
+      "apiUrl": "http://138.197.177.185:3000",
+      "admob": {
+        "appId": "ca-app-pub-6346259754086027~6061550854",
+        "bannerAdUnitId": "ca-app-pub-6346259754086027/4345144506",
+        "isProduction": true
+      },
+      "iap": {
+        "removeAdsProductId": "com.tolgaoztrk.carlog.removeads"
+      }
+    }
+  }
+}

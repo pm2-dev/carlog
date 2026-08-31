@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "346706303954",
+    "project_id": "carlogmobil",
+    "storage_bucket": "carlogmobil.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:346706303954:android:d761731d5abba9ec45060b",
+        "android_client_info": {
+          "package_name": "com.tolgaoztrk.carlog"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDt4EmIEJCmmbuuegO8maiVQUN565B_V_I"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
