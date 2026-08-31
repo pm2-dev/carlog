@@ -38,7 +38,7 @@ Fiyatları güncellemek için:
 Bu JSON dosyası Carlog mobil uygulaması tarafından otomatik olarak çekilir:
 
 ```
-https://raw.githubusercontent.com/ztektolga/carlog/main/carlog-prices/charging_prices.json
+https://raw.githubusercontent.com/pm2-dev/carlog/main/carlog-prices/charging_prices.json
 ```
 
 ## 🔧 JSON Formatı

@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import localPricesData from '../../assets/charging_prices.json';
 
 const GITHUB_PRICES_URL =
-  'https://raw.githubusercontent.com/ztektolga/carlog/main/carlog-prices/charging_prices.json';
+  'https://raw.githubusercontent.com/pm2-dev/carlog/main/carlog-prices/charging_prices.json';
 const CACHE_KEY = '@carlog_charging_prices';
 const CACHE_EXPIRY_KEY = '@carlog_charging_prices_expiry';
 const CACHE_DURATION = 6 * 60 * 60 * 1000;
