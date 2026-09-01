@@ -18,24 +18,17 @@ interface FuelRecordItemProps {
 
 export const FuelRecordItem = ({ item, onDelete, onEdit, averageConsumption, recordIndex, totalRecords }: FuelRecordItemProps) => {
   const { colors } = useAppTheme();
-  const { locale } = useTranslation();
+  const { t, locale } = useTranslation();
   const { currencySymbol } = useCurrency();
+  const dateLocale = (locale ?? 'tr').replace('_', '-');
 
-  // Güvenli erişim için null kontrolü
   if (!item || !item.id) {
     return null;
   }
 
-  // İlk kayıt mı kontrol et (en eski kayıt = ilk kayıt)
-  // recordIndex son kayıttan başlar (0 = en yeni), totalRecords-1 = en eski (ilk kayıt)
   const safeRecordIndex = recordIndex ?? 0;
   const safeTotalRecords = totalRecords ?? 0;
   const isFirstRecord = safeTotalRecords > 0 && safeRecordIndex === safeTotalRecords - 1;
-  
-  // Debug log
-  if (__DEV__) {
-    console.log(`[FuelRecord] ${item.vehicle?.plate ?? 'N/A'} - Index: ${safeRecordIndex}, Total: ${safeTotalRecords}, First: ${isFirstRecord}`);
-  }
 
   // Yakıt tipleri kontrolü
   const fuelTypes = item.vehicle?.fuelTypes ?? [];
@@ -75,9 +68,11 @@ export const FuelRecordItem = ({ item, onDelete, onEdit, averageConsumption, rec
   
   // Tüketim seviyesi hesaplama (kWh veya L bazlı)
   // İlk kayıtta tüketim hesaplanmaz
+  const liquidAmount = (item.liters ?? 0) + (item.lpgLiters ?? 0);
+  const consumptionFuel = liquidAmount > 0 ? liquidAmount : (item.kWh ?? 0);
   const distanceKm = item.distanceKm ?? 0;
-  const currentConsumption = !isFirstRecord && distanceKm > 0 && fuelAmount > 0
-    ? (fuelAmount / distanceKm) * 100 
+  const currentConsumption = !isFirstRecord && distanceKm > 0 && consumptionFuel > 0
+    ? (consumptionFuel / distanceKm) * 100 
     : 0;
   
   // Tüketim kategorisi belirleme
@@ -119,12 +114,12 @@ export const FuelRecordItem = ({ item, onDelete, onEdit, averageConsumption, rec
           style={[styles.actionButton, { backgroundColor: colors.danger }]}
           onPress={() => {
             Alert.alert(
-              'Kaydı Sil',
-              'Bu yakıt kaydını silmek istediğinize emin misiniz?',
+              t('common.delete'),
+              t('dashboard.delete_confirm'),
               [
-                { text: 'Vazgeç', style: 'cancel' },
+                { text: t('common.cancel'), style: 'cancel' },
                 { 
-                  text: 'Sil', 
+                  text: t('common.delete'), 
                   style: 'destructive', 
                   onPress: () => onDelete(item.id) 
                 },
@@ -139,28 +134,36 @@ export const FuelRecordItem = ({ item, onDelete, onEdit, averageConsumption, rec
 
   return (
     <Swipeable renderRightActions={renderRightActions} containerStyle={styles.swipeContainer}>
-      <View style={[styles.container, { backgroundColor: colors.surfaceAlt }]}>
+      <Pressable
+        onPress={() => onEdit(item)}
+        style={[styles.container, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.leftContent}>
-          <View style={[styles.iconBox, { backgroundColor: colors.surface }]}>
-            <Feather name={isElectricOrHybrid ? "zap" : "droplet"} size={20} color={colors.primary} />
+          <View style={[styles.iconBox, { backgroundColor: colors.primarySoft }]}>
+            <Feather name={isElectricOrHybrid ? "zap" : "droplet"} size={18} color={colors.primary} />
           </View>
           <View style={styles.infoContent}>
             <Text style={[styles.plate, { color: colors.textPrimary }]}>
-              {item.vehicle?.plate || 'Plaka Yok'}
+              {item.vehicle?.plate || t('fuel_entry.no_plate')}
             </Text>
             <Text style={[styles.date, { color: colors.textSecondary }]}>
-              {item.refuelDate ? new Date(item.refuelDate).toLocaleDateString((locale ?? 'tr').replace('_', '-'), {
+              {item.refuelDate ? new Date(item.refuelDate).toLocaleDateString(dateLocale, {
                 day: 'numeric',
-                month: 'long',
+                month: 'short',
                 year: 'numeric'
               }) : '-'}
               {item.createdAt && (
-                <Text> • {new Date(item.createdAt).toLocaleTimeString((locale ?? 'tr').replace('_', '-'), {
+                <Text> · {new Date(item.createdAt).toLocaleTimeString(dateLocale, {
                   hour: '2-digit',
                   minute: '2-digit'
                 })}</Text>
               )}
             </Text>
+            {distanceKm > 0 && (
+              <Text style={[styles.metaLine, { color: colors.textMuted }]}>
+                {distanceKm.toLocaleString(dateLocale)} km
+                {item.currentOdometer ? ` · ${item.currentOdometer.toLocaleString(dateLocale)} km` : ''}
+              </Text>
+            )}
             {item.note && item.note.trim() !== '' && (
               <View style={styles.noteContainer}>
                 <Feather name="file-text" size={10} color={colors.textMuted} />
@@ -174,10 +177,9 @@ export const FuelRecordItem = ({ item, onDelete, onEdit, averageConsumption, rec
 
         <View style={styles.rightContent}>
           <Text style={[styles.cost, { color: colors.textPrimary }]}>
-            {currencySymbol}{(item.totalCost ?? 0).toLocaleString((locale ?? 'tr').replace('_', '-'), { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {currencySymbol}{(item.totalCost ?? 0).toLocaleString(dateLocale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </Text>
           
-          {/* Hibrit araçlarda her iki yakıt türü de varsa özel gösterim */}
           {isMixedHybrid ? (
             <View style={styles.details}>
               <View style={styles.hybridFuelContainer}>
@@ -204,14 +206,13 @@ export const FuelRecordItem = ({ item, onDelete, onEdit, averageConsumption, rec
                   : (isElectricOrHybrid ? '0.0 kWh' : '0.0 L')
                 }
               </Text>
-              {/* İlk kayıt değilse ve mesafe/yakıt varsa tüketimi göster */}
               {!isFirstRecord && distanceKm > 0 && fuelAmount > 0 && (
                 <>
-                  <Text style={[styles.dot, { color: colors.textMuted }]}>•</Text>
+                  <Text style={[styles.dot, { color: colors.textMuted }]}>·</Text>
                   <Text style={[
                     styles.efficiency, 
-                    { color: consumptionLevel === 'high' ? '#D32F2F' : 
-                             consumptionLevel === 'economic' ? '#2E7D32' : 
+                    { color: consumptionLevel === 'high' ? colors.danger : 
+                             consumptionLevel === 'economic' ? colors.success : 
                              colors.primary }
                   ]}>
                     {currentConsumption.toFixed(1)} {fuelUnit === 'kWh' ? 'kWh/100km' : 'L/100km'}
@@ -224,9 +225,9 @@ export const FuelRecordItem = ({ item, onDelete, onEdit, averageConsumption, rec
           {consumptionLevel && (
             <View style={[
               styles.consumptionBadge, 
-              { backgroundColor: consumptionLevel === 'high' ? '#D32F2F' : 
-                                 consumptionLevel === 'economic' ? '#2E7D32' : 
-                                 '#FF9800' }
+              { backgroundColor: consumptionLevel === 'high' ? colors.danger : 
+                                 consumptionLevel === 'economic' ? colors.success : 
+                                 colors.warning }
             ]}>
               <Feather 
                 name={consumptionLevel === 'high' ? 'alert-circle' : 
@@ -236,14 +237,14 @@ export const FuelRecordItem = ({ item, onDelete, onEdit, averageConsumption, rec
                 color="#FFF" 
               />
               <Text style={styles.badgeText}>
-                {consumptionLevel === 'high' ? 'Yüksek Tüketim' : 
-                 consumptionLevel === 'economic' ? 'Ekonomik' : 
-                 'Ortalama'}
+                {consumptionLevel === 'high' ? t('fuel_entry.high_level') : 
+                 consumptionLevel === 'economic' ? t('fuel_entry.economic') : 
+                 t('fuel_entry.average_level')}
               </Text>
             </View>
           )}
         </View>
-      </View>
+      </Pressable>
     </Swipeable>
   );
 };
@@ -258,8 +259,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: 14,
     borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   leftContent: {
     flexDirection: 'row',
@@ -285,6 +287,10 @@ const styles = StyleSheet.create({
   },
   date: {
     fontSize: 12,
+  },
+  metaLine: {
+    fontSize: 11,
+    marginTop: 1,
   },
   noteContainer: {
     flexDirection: 'row',

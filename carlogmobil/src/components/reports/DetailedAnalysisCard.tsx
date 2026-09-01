@@ -71,7 +71,7 @@ export const DetailedAnalysisCard = ({ analysis, isLoading, averageConsumption, 
               <Text style={[styles.cardLabel, { color: colors.textSecondary }]}>{t('reports.best')}</Text>
             </View>
             <Text style={[styles.cardValue, { color: colors.textPrimary }]}>
-              {analysis.consumption.best?.value} {isElectricOrHybrid ? 'kWh' : 'L'}
+              {analysis.consumption.best?.value} {isElectricOrHybrid ? 'kWh/100km' : 'L/100km'}
             </Text>
             <Text style={[styles.cardSubtext, { color: colors.textSecondary }]}>{formatDate(analysis.consumption.best?.date || '')}</Text>
           </View>
@@ -82,7 +82,7 @@ export const DetailedAnalysisCard = ({ analysis, isLoading, averageConsumption, 
               <Text style={[styles.cardLabel, { color: colors.textSecondary }]}>{t('reports.worst')}</Text>
             </View>
             <Text style={[styles.cardValue, { color: colors.textPrimary }]}>
-              {analysis.consumption.worst?.value} {isElectricOrHybrid ? 'kWh' : 'L'}
+              {analysis.consumption.worst?.value} {isElectricOrHybrid ? 'kWh/100km' : 'L/100km'}
             </Text>
             <Text style={[styles.cardSubtext, { color: colors.textSecondary }]}>{formatDate(analysis.consumption.worst?.date || '')}</Text>
           </View>

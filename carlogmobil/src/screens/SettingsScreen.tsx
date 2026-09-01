@@ -1,15 +1,15 @@
-import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Platform } from 'react-native';
-import { useState, useEffect, useMemo } from 'react';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View, Platform } from 'react-native';
+import { useState, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 
 import { Screen } from '@/components/Screen';
 import { SectionCard } from '@/components/SectionCard';
 import { SectionHeader } from '@/components/SectionHeader';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { ThemePreference } from '@/store/themeStore';
-import { useUserProfile, useUpdateProfile, useDeleteAccount } from '@/hooks/queries/useUserQueries';
+import { useDeleteAccount } from '@/hooks/queries/useUserQueries';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useShouldShowTutorial } from '@/components/AppTutorial';
 import { ensureLocalNotificationPermissions, presentLocalNotification } from '@/utils/notificationHelper';
 import { useNotifications, useUnreadCount, useMarkAllAsRead, useDeleteNotification, useDeleteAllNotifications } from '@/hooks/queries/useNotificationQueries';
 import { NotificationLog } from '@/types/domain';
@@ -25,14 +25,12 @@ export default function SettingsScreen() {
   const { t, locale, changeLanguage } = useTranslation();
   const { currencySymbol, currencyCode, changeCurrency, availableCurrencies } = useCurrency();
   const { isPremium, isLoading: isPurchasing, purchaseRemoveAds, restorePurchases } = usePurchase();
-  const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [isNotificationsModalVisible, setNotificationsModalVisible] = useState(false);
   const [isLanguageExpanded, setLanguageExpanded] = useState(false);
   const [isCurrencyExpanded, setCurrencyExpanded] = useState(false);
 
-  const { data: user, isLoading: isUserLoading } = useUserProfile();
-  const deleteAccountMutation = useDeleteAccount();
-  const { resetTutorial } = useShouldShowTutorial();
+  const clearDataMutation = useDeleteAccount();
+  const appVersion = Constants.expoConfig?.version ?? '1.0.6';
   
   const { data: unreadCountData } = useUnreadCount();
   const unreadCount = unreadCountData?.unreadCount ?? 0;
@@ -46,56 +44,24 @@ export default function SettingsScreen() {
     );
   }
 
-  const handleDeleteAccount = () => {
-    // İlk onay
+  const handleClearData = () => {
     Alert.alert(
-      t('settings.delete_account'),
-      t('settings.delete_account_warning'),
+      t('settings.clear_data'),
+      t('settings.clear_data_warning'),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
-          text: t('settings.delete_account'),
+          text: t('settings.clear_data'),
           style: 'destructive',
-          onPress: () => {
-            // İkinci onay - kritik işlem için çift onay
-            Alert.alert(
-              t('settings.delete_account_confirm_title'),
-              t('settings.delete_account_confirm_message'),
-              [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                  text: t('settings.delete_account_final'),
-                  style: 'destructive',
-                  onPress: async () => {
-                    try {
-                      await deleteAccountMutation.mutateAsync();
-                      await AsyncStorage.clear();
-                      Alert.alert(t('common.success'), t('settings.delete_account_success'));
-                    } catch (error) {
-                      console.error('Hesap silme hatası:', error);
-                      Alert.alert(t('common.error'), t('settings.delete_account_error'));
-                    }
-                  },
-                },
-              ]
-            );
-          },
-        },
-      ]
-    );
-  };
-
-  const handleResetTutorial = () => {
-    Alert.alert(
-      t('settings.tutorial_reset'),
-      t('settings.tutorial_reset_confirm'),
-      [
-        { text: t('common.no'), style: 'cancel' },
-        {
-          text: t('common.yes'),
           onPress: async () => {
-            await resetTutorial();
-            Alert.alert(t('common.success'), t('settings.tutorial_reset_success'));
+            try {
+              await clearDataMutation.mutateAsync();
+              await AsyncStorage.clear();
+              Alert.alert(t('common.success'), t('settings.clear_data_success'));
+            } catch (error) {
+              console.error('Veri silme hatası:', error);
+              Alert.alert(t('common.error'), t('settings.delete_account_error'));
+            }
           },
         },
       ]
@@ -111,7 +77,7 @@ export default function SettingsScreen() {
       }
 
       await presentLocalNotification(
-        t('settings.test_notification'),
+        'CarLog',
         t('settings.test_notification_sent'),
         { type: 'test' }
       );
@@ -168,28 +134,6 @@ export default function SettingsScreen() {
             )}
           </Pressable>
       </View>
-
-      <SectionCard>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <View style={{ flex: 1 }}>
-                  <SectionHeader subtitle={t('settings.user_profile')}>{t('settings.user_profile')}</SectionHeader>
-              </View>
-              <Pressable onPress={() => setEditModalVisible(true)} style={{ padding: 8 }}>
-                  <Text style={{ color: colors.primary, fontWeight: '600' }}>{t('common.edit')}</Text>
-              </Pressable>
-          </View>
-          
-          {isUserLoading ? (
-              <ActivityIndicator color={colors.primary} />
-          ) : (
-              <View style={[styles.rowBlock, { borderBottomColor: colors.border }]}> 
-                <Text style={[styles.rowTitle, { color: colors.textPrimary }]}>{t('settings.full_name')}</Text>
-                <Text style={[styles.rowValue, { color: colors.textSecondary }]}>
-                  {user?.fullName || t('settings.not_defined')}
-                </Text>
-              </View>
-          )}
-        </SectionCard>
 
       <SectionCard>
         <SectionHeader subtitle={t('settings.theme_preference')}>{t('settings.theme_preference')}</SectionHeader>
@@ -393,60 +337,42 @@ export default function SettingsScreen() {
 
       {/* Uygulama Ayarları */}
       <SectionCard>
-        <SectionHeader subtitle={t('settings.tutorial')}>{t('settings.tutorial')}</SectionHeader>
-        
-        {/* Tutorial Reset */}
-        <Pressable 
-            onPress={handleResetTutorial}
-            style={[styles.tutorialButton, { backgroundColor: colors.surfaceAlt }]}>
-            <Text style={{ color: colors.primary, fontWeight: '600' }}>{t('settings.tutorial_reset')}</Text>
-        </Pressable>
-
-        {/* Test Notification */}
-        <View style={{ marginTop: 16 }}>
-          <Text style={[styles.rowTitle, { color: colors.textPrimary, marginBottom: 8 }]}>
-            {t('settings.test_notification')}
+        <SectionHeader subtitle={t('settings.notifications')}>{t('settings.test_notification')}</SectionHeader>
+        <Pressable
+          onPress={handleTestNotification}
+          style={[styles.testButton, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+          <Text style={{ color: colors.textPrimary, fontWeight: '600' }}>{t('settings.test_notification')}</Text>
+          <Text style={{ color: colors.textMuted, marginTop: 6, fontSize: 13 }}>
+            {t('settings.test_notification_desc')}
           </Text>
-          <Pressable
-            onPress={handleTestNotification}
-            style={[styles.testButton, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-            <Text style={{ color: colors.textPrimary, fontWeight: '600' }}>{t('settings.test_notification')}</Text>
-            <Text style={{ color: colors.textMuted, marginTop: 6, fontSize: 13 }}>
-              {t('settings.test_notification_desc')}
-            </Text>
-          </Pressable>
-        </View>
+        </Pressable>
       </SectionCard>
 
       <SectionCard>
-          <SectionHeader subtitle={t('settings.account')}>{t('settings.account')}</SectionHeader>
+          <SectionHeader subtitle={t('settings.clear_data_info')}>{t('settings.account')}</SectionHeader>
           <Pressable
-              onPress={handleDeleteAccount}
-              disabled={deleteAccountMutation.isPending}
+              onPress={handleClearData}
+              disabled={clearDataMutation.isPending}
               style={[styles.deleteAccountButton, { backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]}>
-              {deleteAccountMutation.isPending ? (
+              {clearDataMutation.isPending ? (
                 <ActivityIndicator color="#DC2626" size="small" />
               ) : (
                 <>
                   <Ionicons name="trash-outline" size={18} color="#DC2626" />
                   <Text style={{ color: '#DC2626', fontWeight: '600', marginLeft: 8 }}>
-                    {t('settings.delete_account')}
+                    {t('settings.clear_data')}
                   </Text>
                 </>
               )}
           </Pressable>
           <Text style={[styles.deleteAccountWarning, { color: colors.textMuted }]}>
-            {t('settings.delete_account_info')}
+            {t('settings.clear_data_info')}
           </Text>
         </SectionCard>
 
-      {isEditModalVisible && (
-        <EditProfileModal 
-          visible={isEditModalVisible} 
-          onClose={() => setEditModalVisible(false)} 
-          user={user ?? null} 
-        />
-      )}
+      <Text style={[styles.versionText, { color: colors.textMuted }]}>
+        CarLog {t('settings.app_version')} {appVersion}
+      </Text>
       
       <NotificationsModal 
         visible={isNotificationsModalVisible} 
@@ -454,63 +380,6 @@ export default function SettingsScreen() {
       />
     </Screen>
   );
-}
-
-function EditProfileModal({ visible, onClose, user }: { visible: boolean; onClose: () => void; user: any }) {
-    const { colors } = useAppTheme();
-    const { t } = useTranslation();
-    const updateMutation = useUpdateProfile();
-
-    // user değiştiğinde state'i güncelle - null/undefined durumunu güvenli şekilde ele al
-    const [fullName, setFullName] = useState('');
-    
-    useEffect(() => {
-        if (visible) {
-            setFullName(user?.fullName ?? '');
-        }
-    }, [visible, user?.fullName]);
-    
-    const handleSubmit = () => {
-        updateMutation.mutate({
-            fullName
-        }, {
-            onSuccess: () => {
-                onClose();
-                Alert.alert(t('common.success'), t('settings.profile_updated'));
-            },
-            onError: () => Alert.alert(t('common.error'), t('settings.update_error'))
-        });
-    };
-
-    return (
-        <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-             <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                    <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 0 }]}>{t('settings.edit_profile')}</Text>
-                    <Pressable onPress={onClose}>
-                        <Text style={{ color: colors.primary, fontSize: 16 }}>{t('common.close')}</Text>
-                    </Pressable>
-                </View>
-
-                <ScrollView contentContainerStyle={{ gap: 16 }}>
-                    <View>
-                        <Text style={{ color: colors.textSecondary, marginBottom: 8 }}>{t('settings.full_name')}</Text>
-                        <TextInput 
-                            value={fullName} 
-                            onChangeText={setFullName}
-                            placeholder={t('settings.full_name')}
-                            placeholderTextColor={colors.textMuted}
-                            style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surface }]} 
-                        />
-                    </View>
-
-                    <Pressable onPress={handleSubmit} style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 20 }}>
-                        {updateMutation.isPending ? <ActivityIndicator color="#fff"/> : <Text style={{ color: '#fff', fontWeight: 'bold' }}>{t('common.save')}</Text>}
-                    </Pressable>
-                </ScrollView>
-             </View>
-        </Modal>
-    );
 }
 
 function NotificationsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -914,6 +783,12 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginTop: 12,
     paddingHorizontal: 8,
+  },
+  versionText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 12,
   },
   modalContainer: {
       flex: 1,

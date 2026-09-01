@@ -1,11 +1,8 @@
 import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { Platform } from 'react-native';
-import { useState, useEffect } from 'react';
+import { Platform, View } from 'react-native';
 
 import { useAppTheme } from '@/hooks/useAppTheme';
-import { AppTutorial, useShouldShowTutorial } from '@/components/AppTutorial';
-import { getTutorialSteps } from '@/utils/tutorialSteps';
 import { useTranslation } from '@/hooks/useTranslation';
 
 const TAB_ICON_SIZE = 22;
@@ -20,28 +17,13 @@ const tabScreenOptions = (title: string, icon: keyof typeof Feather.glyphMap) =>
 export default function TabLayout() {
   const { colors } = useAppTheme();
   const { t } = useTranslation();
-  const { shouldShow, isLoading } = useShouldShowTutorial();
-  const [showTutorial, setShowTutorial] = useState(false);
-
-  useEffect(() => {
-    if (!isLoading && shouldShow) {
-      // Küçük bir gecikme ile tutorial'ı göster (animasyonlar için)
-      const timer = setTimeout(() => {
-        setShowTutorial(true);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [isLoading, shouldShow]);
-
-  const handleTutorialComplete = () => {
-    setShowTutorial(false);
-  };
 
   return (
-    <>
+    <View style={{ flex: 1 }}>
       <Tabs
         screenOptions={{
           headerShown: false,
+          lazy: false,
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: colors.textMuted,
           tabBarStyle: {
@@ -62,13 +44,6 @@ export default function TabLayout() {
         <Tabs.Screen name="reminders" options={tabScreenOptions(t('tabs.reminders'), 'bell')} />
         <Tabs.Screen name="settings" options={tabScreenOptions(t('tabs.settings'), 'settings')} />
       </Tabs>
-
-      <AppTutorial
-        steps={getTutorialSteps()}
-        visible={showTutorial}
-        onComplete={handleTutorialComplete}
-      />
-    </>
+    </View>
   );
 }
-

@@ -11,13 +11,16 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.tolgaoztrk.carlog",
-      "buildNumber": "5",
+      "buildNumber": "7",
       "config": {
         "usesNonExemptEncryption": false
       },
       "infoPlist": {
         "CFBundleDevelopmentRegion": "en",
-        "CFBundleLocalizations": ["en", "tr"],
+        "CFBundleLocalizations": [
+          "en",
+          "tr"
+        ],
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
         },
@@ -26,7 +29,16 @@
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Location permission is required to show nearby gas and charging stations.",
         "UIBackgroundModes": [
           "remote-notification"
-        ]
+        ],
+        "NSLocationAlwaysUsageDescription": "Location permission is required to show nearby gas and charging stations.",
+        "NSCameraUsageDescription": "Camera access is required to scan your fuel receipts and automatically record your fuel consumption data. This helps you track your vehicle expenses more easily.",
+        "NSPhotoLibraryUsageDescription": "Photo library permission is required to select photos.",
+        "NSPhotoLibraryAddUsageDescription": "Permission is required to save photos.",
+        "NSUserNotificationsUsageDescription": "Notification permission is required for your reminders and important updates.",
+        "NSMicrophoneUsageDescription": "Microphone permission is required to record audio.",
+        "NSCalendarsUsageDescription": "Calendar permission is required to add reminders.",
+        "NSContactsUsageDescription": "Contact permission is required to access contact information.",
+        "NSFaceIDUsageDescription": "Face ID is used for secure authentication."
       },
       "usesAppleSignIn": false,
       "associatedDomains": [
@@ -131,6 +143,12 @@
       "iap": {
         "removeAdsProductId": "com.tolgaoztrk.carlog.removeads"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/c6d76568-0642-4562-8c0a-44e698bc9cdd"
     }
   }
 }

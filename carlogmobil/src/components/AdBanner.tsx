@@ -60,7 +60,8 @@ export const AdBanner = ({ adUnitId, size = 'banner', isPremium = false }: AdBan
         });
         
         // Banner boyutu
-        const bannerSize = size === 'largeBanner' ? BannerAdSize.LARGE_BANNER : BannerAdSize.ANCHORED_ADAPTIVE_BANNER;
+        // ANCHORED_ADAPTIVE_BANNER native katmanda ekranın altına yapışıp tab bar tıklamalarını yutabiliyor.
+        const bannerSize = size === 'largeBanner' ? BannerAdSize.LARGE_BANNER : BannerAdSize.BANNER;
 
         // Banner komponenti oluştur
         const Banner = () => (
@@ -133,7 +134,9 @@ export const AdBanner = ({ adUnitId, size = 'banner', isPremium = false }: AdBan
   return (
     <View style={[styles.container, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}>
       <Text style={[styles.label, { color: colors.textMuted }]}>{t('ads.sponsored_content')}</Text>
-      <AdComponent />
+      <View style={styles.adSlot}>
+        <AdComponent />
+      </View>
     </View>
   );
 };
@@ -154,6 +157,12 @@ const styles = StyleSheet.create({
   },
   placeholder: {
     paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adSlot: {
+    height: 50,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },

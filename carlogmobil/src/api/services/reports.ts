@@ -20,6 +20,7 @@ export interface VehicleStats {
   vehicle: Vehicle;
   stats: {
     totalDistance: number;
+    currentOdometer: number;
     totalLiters: number;
     totalLpgLiters: number;
     totalKwh: number;
@@ -46,6 +47,8 @@ export interface SeasonalStats {
   totalKwh: number;
   totalDistance: number;
   count: number;
+  averageConsumption: number;
+  unit: string;
 }
 
 export interface ChartDataPoint {
@@ -54,6 +57,9 @@ export interface ChartDataPoint {
   totalLiters: number;
   totalLpgLiters: number;
   totalKwh: number;
+  totalDistance: number;
+  consumption: number;
+  unit: string;
   date: string;
 }
 
@@ -119,16 +125,90 @@ type EntryRow = {
   lpgLiters: number;
   kWh: number;
   distanceKm: number;
+  previousOdometer: number;
   currentOdometer: number;
   season: string | null;
 };
+
+type TripEntry = EntryRow & { tripKm: number; isBaseline: boolean };
 
 function toDate(value: string): Date {
   return new Date(value);
 }
 
-function isElectricOrHybrid(fuelTypes: FuelType[]): boolean {
-  return fuelTypes.includes('ELEKTRIK') || fuelTypes.includes('HIBRIT');
+function liquidFuel(entry: Pick<EntryRow, 'liters' | 'lpgLiters'>): number {
+  return (entry.liters || 0) + (entry.lpgLiters || 0);
+}
+
+function energyKwh(entry: Pick<EntryRow, 'kWh'>): number {
+  return entry.kWh || 0;
+}
+
+function consumptionAmount(entry: Pick<EntryRow, 'liters' | 'lpgLiters' | 'kWh'>): { amount: number; electric: boolean } {
+  const liquid = liquidFuel(entry);
+  const kwh = energyKwh(entry);
+  if (liquid > 0) return { amount: liquid, electric: false };
+  if (kwh > 0) return { amount: kwh, electric: true };
+  return { amount: 0, electric: false };
+}
+
+function sortEntries(entries: EntryRow[]): EntryRow[] {
+  return [...entries].sort((a, b) => {
+    const odo = (a.currentOdometer || 0) - (b.currentOdometer || 0);
+    if (odo !== 0) return odo;
+    const dateDiff = toDate(a.refuelDate).getTime() - toDate(b.refuelDate).getTime();
+    if (dateDiff !== 0) return dateDiff;
+    return a.id.localeCompare(b.id);
+  });
+}
+
+function withTripDistances(entries: EntryRow[]): TripEntry[] {
+  const sorted = sortEntries(entries);
+  return sorted.map((entry, index) => {
+    const prev = index > 0 ? sorted[index - 1] : null;
+    const tripKm = prev
+      ? Math.max(0, entry.currentOdometer - prev.currentOdometer)
+      : 0;
+    return { ...entry, tripKm, isBaseline: index === 0 };
+  });
+}
+
+function trackedDistance(trips: TripEntry[]): number {
+  return trips.reduce((sum, e) => sum + e.tripKm, 0);
+}
+
+function withTripDistancesByVehicle(entries: EntryRow[]): TripEntry[] {
+  const grouped = new Map<string, EntryRow[]>();
+  for (const entry of entries) {
+    const list = grouped.get(entry.vehicleId) ?? [];
+    list.push(entry);
+    grouped.set(entry.vehicleId, list);
+  }
+  return [...grouped.values()].flatMap((group) => withTripDistances(group));
+}
+
+function tripFills(trips: TripEntry[]): TripEntry[] {
+  return trips.filter((e) => !e.isBaseline);
+}
+
+function defaultUnit(fuelTypes: FuelType[]): { electric: boolean; unit: string } {
+  const hasLiquid = fuelTypes.some((t) => t === 'BENZIN' || t === 'DIZEL' || t === 'LPG' || t === 'HIBRIT');
+  if (fuelTypes.includes('ELEKTRIK') && !hasLiquid) {
+    return { electric: true, unit: 'kWh/100km' };
+  }
+  return { electric: false, unit: 'L/100km' };
+}
+
+function metricFromFills(fills: TripEntry[], fallback: FuelType[] = []): { amount: number; electric: boolean; unit: string } {
+  const liquid = fills.reduce((sum, e) => sum + liquidFuel(e), 0);
+  const kwh = fills.reduce((sum, e) => sum + energyKwh(e), 0);
+  if (liquid > 0) return { amount: liquid, electric: false, unit: 'L/100km' };
+  if (kwh > 0) return { amount: kwh, electric: true, unit: 'kWh/100km' };
+  return { amount: 0, ...defaultUnit(fallback) };
+}
+
+function consumptionPer100km(amount: number, distanceKm: number): number {
+  return distanceKm > 0 && amount > 0 ? (amount / distanceKm) * 100 : 0;
 }
 
 async function getEntries(vehicleId?: string, from?: Date, to?: Date): Promise<EntryRow[]> {
@@ -148,32 +228,24 @@ async function getEntries(vehicleId?: string, from?: Date, to?: Date): Promise<E
     params.push(to.toISOString());
   }
   return db.getAllAsync<EntryRow>(
-    `SELECT id, vehicleId, refuelDate, totalCost, liters, lpgLiters, kWh, distanceKm, currentOdometer, season
+    `SELECT id, vehicleId, refuelDate, totalCost, liters, lpgLiters, kWh, distanceKm,
+            previousOdometer, currentOdometer, season
      FROM fuel_entries
      WHERE ${clauses.join(' AND ')}
-     ORDER BY refuelDate ASC, currentOdometer ASC`,
+     ORDER BY currentOdometer ASC, refuelDate ASC`,
     ...params
   );
 }
 
-async function firstEntryId(vehicleId: string): Promise<string | null> {
-  const db = await getDb();
-  const row = await db.getFirstAsync<{ id: string }>(
-    `SELECT id FROM fuel_entries WHERE vehicleId = ? AND deletedAt IS NULL
-     ORDER BY refuelDate ASC, currentOdometer ASC LIMIT 1`,
-    vehicleId
-  );
-  return row?.id ?? null;
-}
-
-async function excludeFirstEntries(entries: EntryRow[]): Promise<EntryRow[]> {
-  const vehicleIds = [...new Set(entries.map((e) => e.vehicleId))];
-  const firstIds = new Set<string>();
-  for (const id of vehicleIds) {
-    const firstId = await firstEntryId(id);
-    if (firstId) firstIds.add(firstId);
-  }
-  return entries.filter((e) => !firstIds.has(e.id));
+async function getTrips(vehicleId?: string, from?: Date, to?: Date): Promise<TripEntry[]> {
+  const all = await getEntries(vehicleId);
+  const trips = withTripDistancesByVehicle(all);
+  return trips.filter((entry) => {
+    const date = toDate(entry.refuelDate);
+    if (from && date < from) return false;
+    if (to && date >= to) return false;
+    return true;
+  });
 }
 
 export const reportService = {
@@ -209,73 +281,30 @@ export const reportService = {
 
   getVehicleStats: async (vehicleId: string): Promise<VehicleStats> => {
     const vehicle = await vehicleService.getById(vehicleId);
-    const electric = isElectricOrHybrid(vehicle.fuelTypes);
-    const entries = await getEntries(vehicleId);
-
-    const emptyStats = {
-      vehicle,
-      stats: {
-        totalDistance: 0,
-        totalLiters: 0,
-        totalLpgLiters: 0,
-        totalKwh: 0,
-        totalCost: 0,
-        averageConsumption: 0,
-        costPerKm: 0,
-        unit: electric ? 'kWh/100km' : 'L/100km',
-      },
-    };
-
-    if (entries.length === 0) return emptyStats;
-
-    const forCalc = entries.length > 1 ? entries.slice(1) : [];
-    if (forCalc.length === 0) {
-      const first = entries[0];
-      return {
-        vehicle,
-        stats: {
-          totalDistance: first.distanceKm,
-          totalLiters: first.liters || 0,
-          totalLpgLiters: first.lpgLiters || 0,
-          totalKwh: first.kWh || 0,
-          totalCost: first.totalCost,
-          averageConsumption: 0,
-          costPerKm: first.distanceKm > 0 ? first.totalCost / first.distanceKm : 0,
-          unit: electric ? 'kWh/100km' : 'L/100km',
-        },
-      };
-    }
-
-    const aggregates = forCalc.reduce(
-      (acc, curr) => ({
-        distanceKm: acc.distanceKm + curr.distanceKm,
-        liters: acc.liters + (curr.liters || 0),
-        lpgLiters: acc.lpgLiters + (curr.lpgLiters || 0),
-        kWh: acc.kWh + (curr.kWh || 0),
-      }),
-      { distanceKm: 0, liters: 0, lpgLiters: 0, kWh: 0 }
-    );
-
-    const totalCost = entries.reduce((sum, e) => sum + e.totalCost, 0);
-    const totalLiquidFuel = aggregates.liters + aggregates.lpgLiters;
-    const averageConsumption =
-      aggregates.distanceKm > 0
-        ? electric
-          ? (aggregates.kWh / aggregates.distanceKm) * 100
-          : (totalLiquidFuel / aggregates.distanceKm) * 100
-        : 0;
+    const fallback = defaultUnit(vehicle.fuelTypes);
+    const trips = await getTrips(vehicleId);
+    const fills = tripFills(trips);
+    const distanceKm = trackedDistance(trips);
+    const metric = metricFromFills(fills, vehicle.fuelTypes);
+    const tripCost = fills.reduce((sum, e) => sum + e.totalCost, 0);
+    const totalCost = trips.reduce((sum, e) => sum + e.totalCost, 0);
+    const lastOdometer =
+      trips.length > 0
+        ? trips.reduce((max, e) => Math.max(max, e.currentOdometer || 0), 0)
+        : vehicle.currentOdometer || 0;
 
     return {
       vehicle,
       stats: {
-        totalDistance: aggregates.distanceKm,
-        totalLiters: aggregates.liters,
-        totalLpgLiters: aggregates.lpgLiters,
-        totalKwh: aggregates.kWh,
+        totalDistance: distanceKm,
+        currentOdometer: lastOdometer,
+        totalLiters: fills.reduce((sum, e) => sum + (e.liters || 0), 0),
+        totalLpgLiters: fills.reduce((sum, e) => sum + (e.lpgLiters || 0), 0),
+        totalKwh: fills.reduce((sum, e) => sum + (e.kWh || 0), 0),
         totalCost,
-        averageConsumption,
-        costPerKm: aggregates.distanceKm > 0 ? totalCost / aggregates.distanceKm : 0,
-        unit: electric ? 'kWh/100km' : 'L/100km',
+        averageConsumption: consumptionPer100km(metric.amount, distanceKm),
+        costPerKm: distanceKm > 0 ? tripCost / distanceKm : 0,
+        unit: metric.amount > 0 ? metric.unit : fallback.unit,
       },
     };
   },
@@ -284,8 +313,7 @@ export const reportService = {
     const targetYear = year ?? new Date().getFullYear();
     const startDate = new Date(targetYear, 0, 1);
     const endDate = new Date(targetYear + 1, 0, 1);
-    const entries = await getEntries(undefined, startDate, endDate);
-    const entriesToInclude = await excludeFirstEntries(entries);
+    const trips = await getTrips(undefined, startDate, endDate);
 
     const monthlyData: MonthlyExpense[] = Array(12)
       .fill(0)
@@ -297,11 +325,10 @@ export const reportService = {
         totalKwh: 0,
       }));
 
-    entries.forEach((entry) => {
-      monthlyData[toDate(entry.refuelDate).getMonth()].totalCost += entry.totalCost;
-    });
-    entriesToInclude.forEach((entry) => {
+    trips.forEach((entry) => {
       const month = toDate(entry.refuelDate).getMonth();
+      monthlyData[month].totalCost += entry.totalCost;
+      if (entry.isBaseline) return;
       monthlyData[month].totalLiters += entry.liters || 0;
       monthlyData[month].totalLpgLiters += entry.lpgLiters || 0;
       monthlyData[month].totalKwh += entry.kWh || 0;
@@ -313,21 +340,25 @@ export const reportService = {
   getSeasonalStats: async (vehicleId?: string, year?: number): Promise<SeasonalStats[]> => {
     const from = year ? new Date(year, 0, 1) : undefined;
     const to = year ? new Date(year + 1, 0, 1) : undefined;
-    const allEntries = (await getEntries(vehicleId, from, to)).filter((e) => e.season);
-    const entriesToAggregate = await excludeFirstEntries(allEntries);
+    const trips = (await getTrips(vehicleId, from, to)).filter((e) => e.season);
     const seasons: SeasonalStats['season'][] = ['KIS', 'ILKBAHAR', 'YAZ', 'SONBAHAR'];
+    const fallbackTypes = vehicleId ? (await vehicleService.getById(vehicleId)).fuelTypes : [];
 
     return seasons.map((season) => {
-      const seasonCalc = entriesToAggregate.filter((e) => e.season === season);
-      const seasonAll = allEntries.filter((e) => e.season === season);
+      const seasonAll = trips.filter((e) => e.season === season);
+      const seasonFills = tripFills(seasonAll);
+      const distanceKm = trackedDistance(seasonAll);
+      const metric = metricFromFills(seasonFills, fallbackTypes);
       return {
         season,
         totalCost: seasonAll.reduce((sum, e) => sum + e.totalCost, 0),
-        totalLiters: seasonCalc.reduce((sum, e) => sum + (e.liters || 0), 0),
-        totalLpgLiters: seasonCalc.reduce((sum, e) => sum + (e.lpgLiters || 0), 0),
-        totalKwh: seasonCalc.reduce((sum, e) => sum + (e.kWh || 0), 0),
-        totalDistance: seasonCalc.reduce((sum, e) => sum + e.distanceKm, 0),
-        count: seasonCalc.length,
+        totalLiters: seasonFills.reduce((sum, e) => sum + (e.liters || 0), 0),
+        totalLpgLiters: seasonFills.reduce((sum, e) => sum + (e.lpgLiters || 0), 0),
+        totalKwh: seasonFills.reduce((sum, e) => sum + (e.kWh || 0), 0),
+        totalDistance: distanceKm,
+        count: seasonFills.length,
+        averageConsumption: consumptionPer100km(metric.amount, distanceKm),
+        unit: metric.unit,
       };
     });
   },
@@ -353,20 +384,28 @@ export const reportService = {
         break;
     }
 
-    let entries = await getEntries(vehicleId, startDate, now);
-    if (entries.length === 0) {
-      const all = await getEntries(vehicleId);
+    let trips = await getTrips(vehicleId, startDate, now);
+    if (trips.length === 0) {
+      const all = await getTrips(vehicleId);
       if (all.length > 0) {
-        entries = all;
+        trips = all;
         groupBy = 'month';
         startDate = toDate(all[0].refuelDate);
       }
     }
 
-    const entriesToChart = await excludeFirstEntries(entries);
+    const fallbackTypes = vehicleId ? (await vehicleService.getById(vehicleId)).fuelTypes : [];
     const dataMap = new Map<
       string,
-      { totalCost: number; totalLiters: number; totalLpgLiters: number; totalKwh: number; date: Date }
+      {
+        totalCost: number;
+        totalLiters: number;
+        totalLpgLiters: number;
+        totalKwh: number;
+        totalDistance: number;
+        date: Date;
+        fills: TripEntry[];
+      }
     >();
 
     const keyFor = (date: Date) =>
@@ -374,22 +413,28 @@ export const reportService = {
         ? date.toISOString().split('T')[0]
         : `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
 
-    entries.forEach((entry) => {
+    trips.forEach((entry) => {
       const date = toDate(entry.refuelDate);
       const key = keyFor(date);
       if (!dataMap.has(key)) {
-        dataMap.set(key, { totalCost: 0, totalLiters: 0, totalLpgLiters: 0, totalKwh: 0, date });
+        dataMap.set(key, {
+          totalCost: 0,
+          totalLiters: 0,
+          totalLpgLiters: 0,
+          totalKwh: 0,
+          totalDistance: 0,
+          date,
+          fills: [],
+        });
       }
-      dataMap.get(key)!.totalCost += entry.totalCost;
-    });
-
-    entriesToChart.forEach((entry) => {
-      const date = toDate(entry.refuelDate);
-      const current = dataMap.get(keyFor(date));
-      if (current) {
+      const current = dataMap.get(key)!;
+      current.totalCost += entry.totalCost;
+      current.totalDistance += entry.tripKm;
+      if (!entry.isBaseline) {
         current.totalLiters += entry.liters || 0;
         current.totalLpgLiters += entry.lpgLiters || 0;
         current.totalKwh += entry.kWh || 0;
+        current.fills.push(entry);
       }
     });
 
@@ -401,58 +446,61 @@ export const reportService = {
           groupBy === 'day'
             ? `${date.getDate()} ${date.toLocaleDateString('tr-TR', { month: 'short' })}`
             : date.toLocaleDateString('tr-TR', { month: 'long' });
+        const metric = metricFromFills(item.fills, fallbackTypes);
         return {
           label,
           totalCost: item.totalCost,
           totalLiters: item.totalLiters,
           totalLpgLiters: item.totalLpgLiters,
           totalKwh: item.totalKwh,
+          totalDistance: item.totalDistance,
+          consumption: consumptionPer100km(metric.amount, item.totalDistance),
+          unit: metric.unit,
           date: item.date.toISOString(),
         };
       });
   },
 
   getDetailedAnalysis: async (vehicleId: string): Promise<DetailedAnalysis | null> => {
-    const vehicle = await vehicleService.getById(vehicleId);
-    const electric = isElectricOrHybrid(vehicle.fuelTypes);
-    const entries = await getEntries(vehicleId);
-    if (entries.length < 2) return null;
+    const trips = await getTrips(vehicleId);
+    if (trips.length < 2) return null;
 
-    const entriesForCalculation = entries.slice(1);
-    const consumptions = entriesForCalculation
-      .filter((e) => {
-        const liquid = (e.liters || 0) + (e.lpgLiters || 0);
-        return e.distanceKm > 0 && (electric ? e.kWh > 0 : liquid > 0);
-      })
+    const fills = tripFills(trips);
+    const consumptions = fills
       .map((e) => {
-        const liquid = (e.liters || 0) + (e.lpgLiters || 0);
+        const metric = consumptionAmount(e);
+        if (e.tripKm <= 0 || metric.amount <= 0) return null;
         return {
-          consumption: electric ? (e.kWh / e.distanceKm) * 100 : (liquid / e.distanceKm) * 100,
+          consumption: consumptionPer100km(metric.amount, e.tripKm),
           date: e.refuelDate,
+          electric: metric.electric,
         };
       })
+      .filter((item): item is { consumption: number; date: string; electric: boolean } => item != null)
       .sort((a, b) => a.consumption - b.consumption);
 
     const best = consumptions[0] ?? null;
     const worst = consumptions.length > 0 ? consumptions[consumptions.length - 1] : null;
 
-    const firstDate = toDate(entries[1].refuelDate);
-    const lastDate = toDate(entries[entries.length - 1].refuelDate);
+    const dates = trips.map((e) => toDate(e.refuelDate).getTime());
+    const firstDate = new Date(Math.min(...dates));
+    const lastDate = new Date(Math.max(...dates));
     const totalDays = Math.max(1, Math.ceil((lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)));
-    const totalDistance = entriesForCalculation.reduce((sum, e) => sum + e.distanceKm, 0);
+    const distanceKm = trackedDistance(trips);
 
-    const prices = entriesForCalculation
-      .filter((e) => {
-        const liquid = (e.liters || 0) + (e.lpgLiters || 0);
-        return electric ? e.kWh > 0 : liquid > 0;
-      })
+    const prices = fills
       .map((e) => {
-        const liquid = (e.liters || 0) + (e.lpgLiters || 0);
-        return electric ? e.totalCost / e.kWh : e.totalCost / liquid;
-      });
+        const metric = consumptionAmount(e);
+        if (metric.amount <= 0) return null;
+        return { price: e.totalCost / metric.amount, electric: metric.electric };
+      })
+      .filter((item): item is { price: number; electric: boolean } => item != null);
 
-    const averageUnitPrice = prices.length > 0 ? prices.reduce((s, p) => s + p, 0) / prices.length : 0;
-    const totalCost = entries.reduce((sum, e) => sum + e.totalCost, 0);
+    const electricPrices = prices.filter((p) => p.electric);
+    const liquidPrices = prices.filter((p) => !p.electric);
+    const priceSet = liquidPrices.length > 0 ? liquidPrices : electricPrices;
+    const averageUnitPrice = priceSet.length > 0 ? priceSet.reduce((s, p) => s + p.price, 0) / priceSet.length : 0;
+    const totalCost = trips.reduce((sum, e) => sum + e.totalCost, 0);
     const predictedYearlyCost = (totalCost / totalDays) * 365;
 
     return {
@@ -461,17 +509,14 @@ export const reportService = {
         worst: worst ? { value: Number(worst.consumption.toFixed(2)), date: worst.date } : null,
       },
       drivingHabits: {
-        averageDailyKm: Math.round(totalDistance / totalDays),
-        averageDaysBetweenRefuel:
-          entriesForCalculation.length > 1
-            ? Math.round(totalDays / (entriesForCalculation.length - 1))
-            : 0,
+        averageDailyKm: Math.round(distanceKm / totalDays),
+        averageDaysBetweenRefuel: trips.length > 1 ? Math.round(totalDays / (trips.length - 1)) : 0,
         totalDaysAnalyzed: totalDays,
       },
       fuelPrices: {
         averagePrice: Number(averageUnitPrice.toFixed(2)),
-        lastPrice: prices.length > 0 ? Number(prices[prices.length - 1].toFixed(2)) : 0,
-        unit: electric ? '₺/kWh' : '₺/L',
+        lastPrice: priceSet.length > 0 ? Number(priceSet[priceSet.length - 1].price.toFixed(2)) : 0,
+        unit: liquidPrices.length > 0 ? '₺/L' : '₺/kWh',
       },
       projection: {
         predictedYearlyCost: Math.round(predictedYearlyCost),

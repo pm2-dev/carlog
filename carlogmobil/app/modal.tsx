@@ -246,23 +246,26 @@ export default function ModalScreen() {
     const kWhNumber = parseNumber(kWh);
     const costNumber = parseNumber(totalCost);
 
-    const distanceNumber =
-      isFormEnabled && currentNumber > previousNumber ? currentNumber - previousNumber : 0;
-
     const isFirstRecord = !isEditMode && vehicleRecordCount === 0;
-    const totalFuel = litersNumber + lpgLitersNumber + kWhNumber;
+    const distanceNumber =
+      isFormEnabled && currentNumber > previousNumber && !isFirstRecord
+        ? currentNumber - previousNumber
+        : 0;
+    const liquidFuel = litersNumber + lpgLitersNumber;
+    const consumptionFuel = liquidFuel > 0 ? liquidFuel : kWhNumber;
+    const totalFuel = liquidFuel + kWhNumber;
     
     let consumption = 0;
     let fuelType = '';
-    if (!isFirstRecord && distanceNumber > 0 && totalFuel > 0) {
-      consumption = (totalFuel / distanceNumber) * 100;
+    if (!isFirstRecord && distanceNumber > 0 && consumptionFuel > 0) {
+      consumption = (consumptionFuel / distanceNumber) * 100;
       
       const usedFuels = [];
       if (litersNumber > 0) usedFuels.push('Benzin');
       if (lpgLitersNumber > 0) usedFuels.push('LPG');
       if (kWhNumber > 0) usedFuels.push('Elektrik');
       
-      fuelType = usedFuels.length > 1 ? 'Karma' : (kWhNumber > 0 ? 'kWh/100km' : 'L/100km');
+      fuelType = usedFuels.length > 1 ? 'Karma' : (kWhNumber > 0 && liquidFuel <= 0 ? 'kWh/100km' : 'L/100km');
     }
     
     const costPerLiter = totalFuel > 0 && costNumber > 0 ? costNumber / totalFuel : 0;
@@ -656,7 +659,7 @@ export default function ModalScreen() {
           </View>
 
           {/* Summary Card */}
-          {derived.distanceKm > 0 && (
+          {((derived.isFirstRecord && parseNumber(currentOdometer) > 0) || derived.distanceKm > 0) && (
             <View style={[styles.summaryCard, { backgroundColor: colors.surface }]}>
               <View style={styles.summaryHeader}>
                 <Ionicons name="analytics" size={20} color={colors.primary} />

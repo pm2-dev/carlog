@@ -13,8 +13,6 @@ import { useMonthlyExpenses, useSeasonalStats, useVehicleStats, useConsumptionCh
 import { ChartPeriod } from '@/api/services/reports';
 import { LineChart, BarChart } from 'react-native-gifted-charts';
 import { DetailedAnalysisCard } from '@/components/reports/DetailedAnalysisCard';
-import { AdBanner } from '@/components/AdBanner';
-import { usePurchase } from '@/contexts/PurchaseContext';
 import { useRouter } from 'expo-router';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 
@@ -23,7 +21,6 @@ export default function ReportsScreen() {
   const isDark = resolvedScheme === 'dark';
   const { t } = useTranslation();
   const { currencySymbol } = useCurrency();
-  const { isPremium } = usePurchase();
   const SCREEN_WIDTH = Dimensions.get('window').width;
   const router = useRouter();
   
@@ -54,7 +51,6 @@ export default function ReportsScreen() {
   }, [selectedVehicleId]);
 
   const selectedVehicle = vehicles?.find(v => v.id === selectedVehicleId);
-  const isElectricOrHybrid = selectedVehicle?.fuelTypes?.includes('ELEKTRIK') || selectedVehicle?.fuelTypes?.includes('HIBRIT');
   const currentYear = new Date().getFullYear();
 
   // Araç seçili değilken rapor API'lerini çağırma
@@ -86,6 +82,14 @@ export default function ReportsScreen() {
   );
   const { data: detailedAnalysis, isLoading: isLoadingDetailed, refetch: refetchDetailed, error: detailedError } = useDetailedAnalysis(selectedVehicleId || '');
   const { data: tcoData, isLoading: isLoadingTco, refetch: refetchTco } = useTotalCostOfOwnership(selectedVehicleId || '');
+
+  const consumptionUnit = vehicleStatsData?.stats.unit ?? (
+    selectedVehicle?.fuelTypes?.includes('ELEKTRIK') &&
+    !selectedVehicle?.fuelTypes?.some((t) => t === 'BENZIN' || t === 'DIZEL' || t === 'LPG' || t === 'HIBRIT')
+      ? 'kWh/100km'
+      : 'L/100km'
+  );
+  const usesElectricMetrics = consumptionUnit.startsWith('kWh');
 
   // Log status briefly
   useEffect(() => {
@@ -150,17 +154,16 @@ export default function ReportsScreen() {
     }
     console.log('✅ Chart Data:', chartData.length, 'items');
     return chartData.map(item => {
-        const totalLiquidFuel = Number(item.totalLiters || 0) + Number(item.totalLpgLiters || 0);
-        const valueRaw = isElectricOrHybrid ? Number(item.totalKwh || 0) : totalLiquidFuel;
+        const valueRaw = Number(item.consumption || 0);
         const value = Number.isFinite(valueRaw) ? valueRaw : 0;
         return {
             value,
             label: translateMonth(item.label),
-            dataPointText: value.toFixed(value >= 10 ? 0 : 1),
+            dataPointText: value > 0 ? value.toFixed(value >= 10 ? 0 : 1) : '0',
             totalCost: Number(item.totalCost || 0)
         };
     });
-  }, [chartData, isElectricOrHybrid, t]);
+  }, [chartData, t]);
   
   const barDataFormatted = useMemo(() => {
       if (!chartData || chartData.length === 0) return [];
@@ -190,31 +193,37 @@ export default function ReportsScreen() {
       </View>
 
       {/* AdMob Reklam Banner */}
-      <AdBanner isPremium={isPremium} />
+      {/* <AdBanner isPremium={isPremium} /> */}
 
       {/* Araç Seçimi (Basit Tab) */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabContainer}>
-        {vehicles?.map(vehicle => (
-          <Pressable
-            key={vehicle.id}
-            onPress={() => setSelectedVehicleId(vehicle.id)}
-            style={[
-              styles.tabItem,
-              { 
-                backgroundColor: selectedVehicleId === vehicle.id ? colors.primary : colors.surface,
-                borderColor: colors.border
-              }
-            ]}
-          >
-            <Text style={[
-              styles.tabLabel, 
-              { color: selectedVehicleId === vehicle.id ? '#FFF' : colors.textSecondary }
-            ]}>
-              {vehicle.plate}
-            </Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <View style={styles.vehicleTabsRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.vehicleTabsScroll}
+          contentContainerStyle={styles.tabContainer}>
+          {vehicles?.map(vehicle => (
+            <Pressable
+              key={vehicle.id}
+              onPress={() => setSelectedVehicleId(vehicle.id)}
+              style={[
+                styles.tabItem,
+                {
+                  backgroundColor: selectedVehicleId === vehicle.id ? colors.primary : colors.surface,
+                  borderColor: colors.border,
+                },
+              ]}>
+              <Text
+                style={[
+                  styles.tabLabel,
+                  { color: selectedVehicleId === vehicle.id ? '#FFF' : colors.textSecondary },
+                ]}>
+                {vehicle.plate}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
 
       {!selectedVehicleId ? (
         <View style={{ padding: 20, alignItems: 'center' }}>
@@ -267,7 +276,7 @@ export default function ReportsScreen() {
                     label={t('reports.avg_consumption')}
                     value={fuelEntryCount < 2 
                       ? t('dashboard.no_records')
-                      : `${vehicleStatsData?.stats.averageConsumption.toFixed(1) ?? 0} ${vehicleStatsData?.stats.unit ?? (isElectricOrHybrid ? 'kWh/100km' : 'L/100km')}`
+                      : `${vehicleStatsData?.stats.averageConsumption.toFixed(1) ?? 0} ${vehicleStatsData?.stats.unit ?? consumptionUnit}`
                     } 
                     colors={colors}
                     icon="speedometer-outline"
@@ -292,10 +301,11 @@ export default function ReportsScreen() {
                     icon="wallet-outline"
                 />
                 <StatBox 
-                    label={t('reports.total_distance')}
+                    label={t('reports.tracked_distance')}
                     value={`${vehicleStatsData?.stats.totalDistance.toLocaleString('tr-TR') ?? 0} ${t('units.km')}`} 
                     colors={colors}
                     icon="navigate-outline"
+                    caption={`${t('reports.current_km')}: ${(vehicleStatsData?.stats.currentOdometer ?? selectedVehicle?.currentOdometer ?? 0).toLocaleString('tr-TR')} ${t('units.km')}`}
                 />
             </View>
 
@@ -307,7 +317,7 @@ export default function ReportsScreen() {
                         analysis={detailedAnalysis ?? null} 
                         isLoading={isLoadingDetailed}
                         averageConsumption={vehicleStatsData?.stats.averageConsumption}
-                        isElectricOrHybrid={isElectricOrHybrid}
+                        isElectricOrHybrid={usesElectricMetrics}
                     />
                 </View>
             </SectionCard>
@@ -368,7 +378,7 @@ export default function ReportsScreen() {
                                     <View>
                                         <Text style={[styles.chartTitle, { color: colors.textPrimary }]}>{t('reports.consumption_trend')}</Text>
                                         <Text style={[styles.chartSubtitle, { color: colors.textSecondary }]}>
-                                            {isElectricOrHybrid ? 'kWh' : t('units.liter')}
+                                            {consumptionUnit}
                                         </Text>
                                     </View>
                                 </View>
@@ -421,7 +431,7 @@ export default function ReportsScreen() {
                                             return (
                                                 <View style={[styles.pointerLabel, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                                                     <Text style={[styles.pointerValue, { color: colors.primary }]}>
-                                                        {items[0].value.toFixed(1)} {isElectricOrHybrid ? 'kWh' : 'L'}
+                                                        {items[0].value.toFixed(1)} {consumptionUnit}
                                                     </Text>
                                                     <Text style={[styles.pointerDate, { color: colors.textSecondary }]}>
                                                         {items[0].label}
@@ -509,11 +519,8 @@ export default function ReportsScreen() {
                              const totalCost = seasonalData.reduce((sum, item) => sum + item.totalCost, 0);
                              const percentage = totalCost > 0 ? (season.totalCost / totalCost) * 100 : 0;
                              const totalLiquidFuel = (season.totalLiters || 0) + (season.totalLpgLiters || 0);
-                             const avgConsumption = season.totalDistance > 0 
-                                ? isElectricOrHybrid 
-                                    ? (season.totalKwh / season.totalDistance) * 100 
-                                    : (totalLiquidFuel / season.totalDistance) * 100
-                                : 0;
+                             const seasonElectric = (season.unit || '').startsWith('kWh');
+                             const avgConsumption = season.averageConsumption || 0;
 
                              return (
                                 <View key={season.season} style={[styles.seasonCard, { backgroundColor: seasonConfig.bg, borderColor: seasonConfig.color }]}>
@@ -542,9 +549,9 @@ export default function ReportsScreen() {
 
                                     <View style={styles.seasonStats}>
                                         <View style={styles.seasonStat}>
-                                            <Ionicons name={isElectricOrHybrid ? "flash-outline" : "water-outline"} size={14} color={colors.textSecondary} />
+                                            <Ionicons name={seasonElectric ? "flash-outline" : "water-outline"} size={14} color={colors.textSecondary} />
                                             <Text style={[styles.seasonStatText, { color: colors.textSecondary }]}>
-                                                {isElectricOrHybrid 
+                                                {seasonElectric 
                                                     ? `${season.totalKwh.toFixed(0)} kWh` 
                                                     : `${totalLiquidFuel.toFixed(0)} L (${t('reports.total')})`}
                                             </Text>
@@ -559,7 +566,7 @@ export default function ReportsScreen() {
                                             <View style={styles.seasonStat}>
                                                 <Ionicons name="analytics-outline" size={14} color={colors.textSecondary} />
                                                 <Text style={[styles.seasonStatText, { color: colors.textSecondary }]}>
-                                                    {avgConsumption.toFixed(1)} {isElectricOrHybrid ? 'kWh/100km' : 'L/100km'}
+                                                    {avgConsumption.toFixed(1)} {season.unit || (seasonElectric ? 'kWh/100km' : 'L/100km')}
                                                 </Text>
                                             </View>
                                         )}
@@ -654,7 +661,7 @@ const TcoBreakdownRow = ({ label, value, total, color, colors, currencySymbol }:
   );
 };
 
-const StatBox = ({ label, value, colors, icon, isDisabled }: { label: string, value: string, colors: any, icon?: string, isDisabled?: boolean }) => (
+const StatBox = ({ label, value, colors, icon, isDisabled, caption }: { label: string, value: string, colors: any, icon?: string, isDisabled?: boolean, caption?: string }) => (
     <View style={[styles.statBox, { backgroundColor: colors.surfaceAlt, opacity: isDisabled ? 0.6 : 1 }]}>
         <View style={styles.statBoxHeader}>
             {icon && (
@@ -665,6 +672,9 @@ const StatBox = ({ label, value, colors, icon, isDisabled }: { label: string, va
             <Text style={[styles.statLabel, { color: colors.textMuted }]}>{label}</Text>
         </View>
         <Text style={[styles.statValue, { color: isDisabled ? colors.textSecondary : colors.textPrimary, fontSize: isDisabled ? 14 : 18 }]}>{value}</Text>
+        {caption ? (
+            <Text style={[styles.statCaption, { color: colors.textSecondary }]}>{caption}</Text>
+        ) : null}
     </View>
 );
 
@@ -692,15 +702,26 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   tabContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
-    marginBottom: 16,
     paddingRight: 20,
+  },
+  vehicleTabsRow: {
+    flexGrow: 0,
+    flexShrink: 0,
+    alignSelf: 'stretch',
+  },
+  vehicleTabsScroll: {
+    flexGrow: 0,
+    flexShrink: 0,
   },
   tabItem: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
+    alignSelf: 'flex-start',
   },
   tabLabel: {
     fontWeight: '600',
@@ -743,6 +764,11 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 18,
     fontWeight: '700',
+    marginLeft: 34,
+  },
+  statCaption: {
+    fontSize: 11,
+    fontWeight: '500',
     marginLeft: 34,
   },
   sectionHeader: { 

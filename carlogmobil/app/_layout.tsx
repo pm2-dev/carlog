@@ -47,7 +47,6 @@ try {
 }
 
 export const unstable_settings = {
-  anchor: '(tabs)',
   initialRouteName: '(tabs)',
 };
 
@@ -124,10 +123,13 @@ function RootNavigator() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider value={navigationTheme}>
-        <Stack>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="modal" options={{ presentation: 'modal', title: t('common.quick_action') }} />
+        <Stack initialRouteName="(tabs)" screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen
+            name="modal"
+            options={{ presentation: 'modal', headerShown: true, title: t('common.quick_action') }}
+          />
         </Stack>
       </ThemeProvider>
       <StatusBar style={statusBarStyle} />

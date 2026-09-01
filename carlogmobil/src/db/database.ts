@@ -87,7 +87,26 @@ CREATE INDEX IF NOT EXISTS idx_notifications_sent ON notifications(sentAt);
 async function openAndMigrate(): Promise<SQLite.SQLiteDatabase> {
   const db = await SQLite.openDatabaseAsync(DATABASE_NAME);
   await db.execAsync(SCHEMA_SQL);
+  await normalizeFuelTripDistances(db);
   return db;
+}
+
+async function normalizeFuelTripDistances(db: SQLite.SQLiteDatabase): Promise<void> {
+  const vehicles = await db.getAllAsync<{ vehicleId: string }>(
+    `SELECT DISTINCT vehicleId FROM fuel_entries WHERE deletedAt IS NULL`
+  );
+  for (const { vehicleId } of vehicles) {
+    const rows = await db.getAllAsync<{ id: string; currentOdometer: number }>(
+      `SELECT id, currentOdometer FROM fuel_entries
+       WHERE vehicleId = ? AND deletedAt IS NULL
+       ORDER BY currentOdometer ASC, refuelDate ASC, id ASC`,
+      vehicleId
+    );
+    for (let i = 0; i < rows.length; i++) {
+      const tripKm = i === 0 ? 0 : Math.max(0, rows[i].currentOdometer - rows[i - 1].currentOdometer);
+      await db.runAsync(`UPDATE fuel_entries SET distanceKm = ? WHERE id = ?`, tripKm, rows[i].id);
+    }
+  }
 }
 
 export async function getDb(): Promise<SQLite.SQLiteDatabase> {

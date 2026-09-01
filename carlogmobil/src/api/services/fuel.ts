@@ -87,6 +87,25 @@ function toDate(value: Date | string): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
+async function recalculateTripDistances(vehicleId: string): Promise<void> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{
+    id: string;
+    currentOdometer: number;
+    refuelDate: string;
+  }>(
+    `SELECT id, currentOdometer, refuelDate FROM fuel_entries
+     WHERE vehicleId = ? AND deletedAt IS NULL
+     ORDER BY currentOdometer ASC, refuelDate ASC, id ASC`,
+    vehicleId
+  );
+
+  for (let i = 0; i < rows.length; i++) {
+    const tripKm = i === 0 ? 0 : Math.max(0, rows[i].currentOdometer - rows[i - 1].currentOdometer);
+    await db.runAsync(`UPDATE fuel_entries SET distanceKm = ? WHERE id = ?`, tripKm, rows[i].id);
+  }
+}
+
 function validateFuelAmounts(
   fuelTypes: FuelType[],
   liters: number,
@@ -158,7 +177,6 @@ export const fuelService = {
     validateFuelAmounts(vehicle.fuelTypes, liters, lpgLiters, kWh);
 
     const refuelDate = toDate(data.refuelDate);
-    const distanceKm = data.currentOdometer - data.previousOdometer;
     const season = getSeason(refuelDate);
     const now = nowIso();
     const id = createId();
@@ -175,7 +193,7 @@ export const fuelService = {
         refuelDate.toISOString(),
         data.previousOdometer,
         data.currentOdometer,
-        distanceKm,
+        Math.max(0, data.currentOdometer - data.previousOdometer),
         liters,
         lpgLiters,
         kWh,
@@ -186,6 +204,8 @@ export const fuelService = {
         now,
         now
       );
+
+      await recalculateTripDistances(data.vehicleId);
 
       if (data.currentOdometer > vehicle.currentOdometer) {
         await db.runAsync(
@@ -221,27 +241,30 @@ export const fuelService = {
     validateFuelAmounts(vehicle.fuelTypes, newLiters, newLpgLiters, newKWh);
 
     const db = await getDb();
-    await db.runAsync(
-      `UPDATE fuel_entries SET
-        vehicleId = ?, refuelDate = ?, previousOdometer = ?, currentOdometer = ?,
-        distanceKm = ?, liters = ?, lpgLiters = ?, kWh = ?, totalCost = ?,
-        note = ?, receiptUrl = ?, season = ?, updatedAt = ?
-       WHERE id = ?`,
-      data.vehicleId ?? entry.vehicleId,
-      newDate.toISOString(),
-      newPrevious,
-      newCurrent,
-      newCurrent - newPrevious,
-      newLiters,
-      newLpgLiters,
-      newKWh,
-      data.totalCost ?? entry.totalCost,
-      data.note ?? entry.note ?? null,
-      data.receiptUrl ?? entry.receiptUrl ?? null,
-      getSeason(newDate),
-      nowIso(),
-      id
-    );
+    await db.withTransactionAsync(async () => {
+      await db.runAsync(
+        `UPDATE fuel_entries SET
+          vehicleId = ?, refuelDate = ?, previousOdometer = ?, currentOdometer = ?,
+          distanceKm = ?, liters = ?, lpgLiters = ?, kWh = ?, totalCost = ?,
+          note = ?, receiptUrl = ?, season = ?, updatedAt = ?
+         WHERE id = ?`,
+        data.vehicleId ?? entry.vehicleId,
+        newDate.toISOString(),
+        newPrevious,
+        newCurrent,
+        Math.max(0, newCurrent - newPrevious),
+        newLiters,
+        newLpgLiters,
+        newKWh,
+        data.totalCost ?? entry.totalCost,
+        data.note ?? entry.note ?? null,
+        data.receiptUrl ?? entry.receiptUrl ?? null,
+        getSeason(newDate),
+        nowIso(),
+        id
+      );
+      await recalculateTripDistances(data.vehicleId ?? entry.vehicleId);
+    });
 
     return fuelService.getById(id);
   },
@@ -262,6 +285,7 @@ export const fuelService = {
         nowIso(),
         entry.vehicleId
       );
+      await recalculateTripDistances(entry.vehicleId);
     });
   },
 

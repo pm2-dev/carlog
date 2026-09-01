@@ -3,10 +3,8 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   Pressable,
   Dimensions,
-  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAppTheme } from '@/hooks/useAppTheme';
@@ -67,11 +65,11 @@ export const AppTutorial = ({ steps, onComplete, visible }: AppTutorialProps) =>
   const step = steps[currentStep];
 
   return (
-    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
-      <View style={styles.overlay}>
-        {/* Dark overlay */}
-        <View style={[styles.darkOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.88)' }]}>
-          {/* Highlight area - transparent hole with glow */}
+    <View style={styles.overlay} pointerEvents="box-none">
+        {/* Görsel karartma — dokunuşları engellemez, tab bar tıklanabilir kalır */}
+        <View
+          pointerEvents="none"
+          style={[styles.darkOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.88)' }]}>
           {step.highlightArea && (
             <View
               style={[
@@ -91,8 +89,9 @@ export const AppTutorial = ({ steps, onComplete, visible }: AppTutorialProps) =>
           )}
         </View>
 
-        {/* Tooltip */}
+        {/* Tooltip — sadece bu alan dokunuş alır */}
         <View
+          pointerEvents="auto"
           style={[
             styles.tooltip,
             {
@@ -140,8 +139,7 @@ export const AppTutorial = ({ steps, onComplete, visible }: AppTutorialProps) =>
             </Pressable>
           </View>
         </View>
-      </View>
-    </Modal>
+    </View>
   );
 };
 
@@ -180,8 +178,8 @@ export const useShouldShowTutorial = () => {
 
 const styles = StyleSheet.create({
   overlay: {
-    flex: 1,
-    position: 'relative',
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
   },
   darkOverlay: {
     ...StyleSheet.absoluteFillObject,

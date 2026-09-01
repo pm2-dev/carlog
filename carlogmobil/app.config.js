@@ -6,7 +6,11 @@ module.exports = () => {
     ...appConfig,
     expo: {
       ...appConfig.expo,
-        ios: {
+      runtimeVersion: appConfig.expo.runtimeVersion ?? { policy: 'appVersion' },
+      updates: appConfig.expo.updates ?? {
+        url: `https://u.expo.dev/${appConfig.expo.extra?.eas?.projectId}`,
+      },
+      ios: {
         ...appConfig.expo.ios,
         infoPlist: {
           ...appConfig.expo.ios.infoPlist,

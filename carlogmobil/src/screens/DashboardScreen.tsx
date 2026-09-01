@@ -14,10 +14,9 @@ import { useDeleteFuelEntry, useFuelEntries } from '@/hooks/queries/useFuelQueri
 import { useVehicles, useDeleteVehicle } from '@/hooks/queries/useVehicleQueries';
 import { FuelEntry, VehicleCategory } from '@/types/domain';
 import { AddVehicleModal } from '@/components/AddVehicleModal';
-import { AdBanner } from '@/components/AdBanner';
-import { usePurchase } from '@/contexts/PurchaseContext';
 import { ReceiptScanner, ScannedReceiptData } from '@/components/ReceiptScanner';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { useCurrency } from '@/hooks/useCurrency';
 
 // Türkçe tarih formatını (GG.AA.YYYY) Date objesine çevirir
 function parseTurkishDate(dateStr: string): Date | null {
@@ -41,9 +40,10 @@ type PageMode = 'records' | 'add-vehicle';
 
 export default function DashboardScreen() {
   const { colors } = useAppTheme();
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
   const router = useRouter();
-  const { isPremium } = usePurchase();
+  const { currencySymbol } = useCurrency();
+  const dateLocale = (locale ?? 'tr').replace('_', '-');
 
   // Tüm useState hook'ları en üstte olmalı - React Hook kuralları
   const [limit, setLimit] = useState(10);
@@ -98,7 +98,6 @@ export default function DashboardScreen() {
 
     if (!fuelEntriesData || !Array.isArray(fuelEntriesData) || fuelEntriesData.length === 0) return averages;
 
-    // Her araç için kayıtları grupla
     const vehicleEntries: Record<string, any[]> = {};
 
     fuelEntriesData.forEach((entry: any) => {
@@ -110,46 +109,38 @@ export default function DashboardScreen() {
       vehicleEntries[entry.vehicleId].push(entry);
     });
 
-    // Her araç için ortalama hesapla (2. kayıttan itibaren)
-    Object.keys(vehicleEntries).forEach(vehicleId => {
+    Object.keys(vehicleEntries).forEach((vehicleId) => {
       const entries = vehicleEntries[vehicleId]
-        .filter(e => e?.refuelDate) // Geçerli tarih kontrolü
+        .filter((e) => e?.refuelDate)
         .sort((a, b) => {
+          const odo = (a.currentOdometer ?? 0) - (b.currentOdometer ?? 0);
+          if (odo !== 0) return odo;
           const dateA = new Date(a.refuelDate).getTime();
           const dateB = new Date(b.refuelDate).getTime();
           if (isNaN(dateA) || isNaN(dateB)) return 0;
-          const dateDiff = dateA - dateB;
-          if (dateDiff !== 0) return dateDiff;
-          return (a.currentOdometer ?? 0) - (b.currentOdometer ?? 0);
+          return dateA - dateB;
         });
 
-      // En az 2 kayıt yoksa tüketim hesaplanmaz
-      if (entries.length < 2) {
-        return;
-      }
-
-      // İlk kayıt başlangıç, 2. kayıttan itibaren hesapla
-      const entriesForCalculation = entries.slice(1);
+      if (entries.length < 2) return;
 
       let totalFuel = 0;
       let totalDistance = 0;
 
-      entriesForCalculation.forEach((entry: any) => {
-        if (!entry?.distanceKm || entry.distanceKm <= 0) return;
+      for (let i = 1; i < entries.length; i++) {
+        const entry = entries[i];
+        const prev = entries[i - 1];
+        const tripKm = Math.max(0, (entry.currentOdometer ?? 0) - (prev.currentOdometer ?? 0));
+        if (tripKm <= 0) continue;
 
-        // Elektrikli veya hibrit araç kontrolü
-        const isElectricOrHybrid = entry.vehicle?.fuelType === 'ELEKTRIK' || entry.vehicle?.fuelType === 'HIBRIT';
+        const liquid = (entry.liters ?? 0) + (entry.lpgLiters ?? 0);
+        const kwh = entry.kWh ?? 0;
+        const amount = liquid > 0 ? liquid : kwh;
+        if (amount <= 0) continue;
 
-        if (isElectricOrHybrid) {
-          totalFuel += entry.electricAmount ?? 0;
-        } else {
-          totalFuel += (entry.benzinDizelAmount ?? 0) + (entry.lpgAmount ?? 0);
-        }
+        totalFuel += amount;
+        totalDistance += tripKm;
+      }
 
-        totalDistance += entry.distanceKm ?? 0;
-      });
-
-      // Ortalama tüketim: L/100km veya kWh/100km
       if (totalDistance > 0) {
         averages[vehicleId] = (totalFuel / totalDistance) * 100;
       }
@@ -206,6 +197,23 @@ export default function DashboardScreen() {
 
     return sorted.slice(0, limit);
   }, [filteredEntries, sortOrder, limit]);
+
+  const monthStats = useMemo(() => {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEntries = (fuelEntriesData || []).filter((entry) => {
+      if (!entry?.refuelDate) return false;
+      const date = new Date(entry.refuelDate);
+      return !isNaN(date.getTime()) && date >= monthStart;
+    });
+    return {
+      monthCount: monthEntries.length,
+      monthSpend: monthEntries.reduce((sum, entry) => sum + (entry.totalCost ?? 0), 0),
+      totalCount: fuelEntriesData?.length ?? 0,
+    };
+  }, [fuelEntriesData]);
+
+  const hasActiveFilters = Boolean(selectedPlate || startDate || endDate);
 
   // Her araç için toplam kayıt sayısı (recordIndex hesaplamak için)
   const vehicleRecordCounts = useMemo(() => {
@@ -417,43 +425,30 @@ export default function DashboardScreen() {
         </Text>
       </View>
 
-      {/* AdMob Reklam Banner */}
-      <AdBanner isPremium={isPremium} />
-
-      {/* Üst Butonlar */}
-      <View style={styles.topButtonsContainer}>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setPageMode('add-vehicle')}
-          style={[
-            styles.topButton,
-            {
-              backgroundColor: pageMode === 'add-vehicle' ? colors.primary : colors.surface,
-              borderColor: colors.border
-            }
-          ]}>
-          <Ionicons
-            name="add-circle-outline"
-            size={18}
-            color={pageMode === 'add-vehicle' ? '#FFF' : colors.textSecondary}
-          />
-          <Text style={[
-            styles.topButtonLabel,
-            { color: pageMode === 'add-vehicle' ? '#FFF' : colors.textSecondary }
-          ]}>
-            {t('dashboard.add_vehicle')}
+      <View style={styles.statsRow}>
+        <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.statCardLabel, { color: colors.textMuted }]}>{t('dashboard.this_month_spend')}</Text>
+          <Text style={[styles.statCardValue, { color: colors.primary }]} numberOfLines={1}>
+            {currencySymbol}{monthStats.monthSpend.toLocaleString(dateLocale, { maximumFractionDigits: 0 })}
           </Text>
-        </Pressable>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.statCardLabel, { color: colors.textMuted }]}>{t('dashboard.this_month_records')}</Text>
+          <Text style={[styles.statCardValue, { color: colors.textPrimary }]}>{monthStats.monthCount}</Text>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.statCardLabel, { color: colors.textMuted }]}>{t('dashboard.all_records_count')}</Text>
+          <Text style={[styles.statCardValue, { color: colors.textPrimary }]}>{monthStats.totalCount}</Text>
+        </View>
+      </View>
 
+      <View style={[styles.topButtonsContainer, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
         <Pressable
           accessibilityRole="button"
           onPress={() => setPageMode('records')}
           style={[
             styles.topButton,
-            {
-              backgroundColor: pageMode === 'records' ? colors.primary : colors.surface,
-              borderColor: colors.border
-            }
+            { backgroundColor: pageMode === 'records' ? colors.primary : 'transparent' }
           ]}>
           <Ionicons
             name="list-outline"
@@ -465,6 +460,26 @@ export default function DashboardScreen() {
             { color: pageMode === 'records' ? '#FFF' : colors.textSecondary }
           ]}>
             {t('dashboard.records')}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setPageMode('add-vehicle')}
+          style={[
+            styles.topButton,
+            { backgroundColor: pageMode === 'add-vehicle' ? colors.primary : 'transparent' }
+          ]}>
+          <Ionicons
+            name="car-outline"
+            size={18}
+            color={pageMode === 'add-vehicle' ? '#FFF' : colors.textSecondary}
+          />
+          <Text style={[
+            styles.topButtonLabel,
+            { color: pageMode === 'add-vehicle' ? '#FFF' : colors.textSecondary }
+          ]}>
+            {t('dashboard.my_vehicles')}
           </Text>
         </Pressable>
       </View>
@@ -538,7 +553,6 @@ export default function DashboardScreen() {
       {/* Kayıtlar Bölümü */}
       {pageMode === 'records' && (
         <>
-          {/* Kayıt Ekleme Butonları */}
           <View style={styles.addRecordButtonsContainer}>
             <Pressable
               accessibilityRole="button"
@@ -547,166 +561,157 @@ export default function DashboardScreen() {
               <Feather name="plus" size={18} color="#FFF" />
               <Text style={styles.addRecordButtonLabel}>{t('dashboard.add_new_record')}</Text>
             </Pressable>
-            
+
             <Pressable
               accessibilityRole="button"
               onPress={() => setReceiptScannerVisible(true)}
-              style={[styles.addRecordButton, styles.scanButton, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
-              <Ionicons name="camera-outline" size={18} color={colors.primary} />
-              <Text style={[styles.addRecordButtonLabel, { color: colors.primary }]}>{t('receipt_scanner.scan_receipt')}</Text>
+              style={[styles.scanIconButton, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
+              <Ionicons name="camera-outline" size={22} color={colors.primary} />
             </Pressable>
           </View>
 
-          <SectionCard>
-            <SectionHeader subtitle={t('dashboard.all_records')}>{t('dashboard.fuel_records')}</SectionHeader>
-
-            {/* Sıralama ve Filtreler */}
-            <View style={styles.filterContainer}>
-              {/* Sıralama Butonu */}
-              <View style={styles.sortRow}>
+          {(vehiclesData?.length ?? 0) > 0 && (
+            <View style={styles.vehicleTabsRow}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.vehicleTabsScroll}
+                contentContainerStyle={styles.vehicleChips}>
                 <Pressable
-                  onPress={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
-                  style={[styles.sortButton, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
-                >
-                  <Feather
-                    name={sortOrder === 'newest' ? 'arrow-down' : 'arrow-up'}
-                    size={16}
-                    color={colors.primary}
-                  />
-                  <Text style={[styles.sortButtonText, { color: colors.textPrimary }]}>
-                    {sortOrder === 'newest' ? t('dashboard.sort_newest') : t('dashboard.sort_oldest')}
+                  onPress={() => setSelectedPlate('')}
+                  style={[
+                    styles.vehicleChip,
+                    {
+                      backgroundColor: !selectedPlate ? colors.primary : colors.surface,
+                      borderColor: colors.border,
+                    },
+                  ]}>
+                  <Text style={[styles.vehicleChipText, { color: !selectedPlate ? '#FFF' : colors.textSecondary }]}>
+                    {t('dashboard.all_vehicles')}
                   </Text>
                 </Pressable>
+                {vehiclesData?.map((vehicle) => {
+                  const selected = selectedPlate === vehicle.plate;
+                  return (
+                    <Pressable
+                      key={vehicle.id}
+                      onPress={() => setSelectedPlate(selected ? '' : vehicle.plate)}
+                      style={[
+                        styles.vehicleChip,
+                        {
+                          backgroundColor: selected ? colors.primary : colors.surface,
+                          borderColor: colors.border,
+                        },
+                      ]}>
+                      <Text style={[styles.vehicleChipText, { color: selected ? '#FFF' : colors.textSecondary }]}>
+                        {vehicle.plate}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
 
-                {(selectedPlate || startDate || endDate) && (
-                  <Pressable onPress={handleClearFilters} style={[styles.clearFiltersButton, { borderColor: colors.border }]}>
-                    <Feather name="x" size={14} color={colors.primary} />
-                    <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>{t('dashboard.clear_filters')}</Text>
-                  </Pressable>
-                )}
-              </View>
+          <View style={styles.filterContainer}>
+            <View style={styles.sortRow}>
+              <Pressable
+                onPress={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')}
+                style={[styles.sortButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
+                <Feather
+                  name={sortOrder === 'newest' ? 'arrow-down' : 'arrow-up'}
+                  size={16}
+                  color={colors.primary}
+                />
+                <Text style={[styles.sortButtonText, { color: colors.textPrimary }]}>
+                  {sortOrder === 'newest' ? t('dashboard.sort_newest') : t('dashboard.sort_oldest')}
+                </Text>
+              </Pressable>
 
-              <View style={styles.filterRow}>
-                {/* Plaka Filtresi */}
-                <View style={styles.filterItemPlate}>
-                  <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('dashboard.plate')}</Text>
-                  <Pressable
-                    onPress={() => {
-                      const plates = vehiclesData?.map(v => v.plate) || [];
-                      if (plates.length === 0) {
-                        Alert.alert(t('common.error'), t('dashboard.no_vehicles_warning'));
-                        return;
-                      }
-                      Alert.alert(
-                        t('dashboard.select_plate'),
-                        t('dashboard.select_vehicle_to_filter'),
-                        [
-                          { text: t('dashboard.all_vehicles'), onPress: () => setSelectedPlate('') },
-                          ...plates.map(plate => ({
-                            text: plate,
-                            onPress: () => setSelectedPlate(plate)
-                          })),
-                          { text: t('common.cancel'), style: 'cancel' }
-                        ]
-                      );
-                    }}
-                    style={[styles.pickerContainer, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
-                  >
-                    <Text style={{ color: selectedPlate ? colors.textPrimary : colors.textMuted, fontSize: 13, flex: 1 }} numberOfLines={1}>
-                      {selectedPlate || t('dashboard.all_vehicles')}
-                    </Text>
-                    <Feather name="chevron-down" size={16} color={colors.textMuted} />
-                  </Pressable>
-                </View>
+              <Pressable
+                onPress={() => showDatePicker('start')}
+                style={[styles.dateChip, { backgroundColor: colors.surface, borderColor: startDate ? colors.primary : colors.border }]}
+              >
+                <Feather name="calendar" size={14} color={startDate ? colors.primary : colors.textMuted} />
+                <Text style={{ color: startDate ? colors.textPrimary : colors.textMuted, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+                  {startDate ? startDate.toLocaleDateString(dateLocale) : t('dashboard.start_date')}
+                </Text>
+              </Pressable>
 
-                {/* Başlangıç Tarihi */}
-                <View style={styles.filterItemDate}>
-                  <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('dashboard.start_date')}</Text>
-                  <Pressable
-                    onPress={() => showDatePicker('start')}
-                    style={[styles.pickerContainer, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
-                  >
-                    <Feather name="calendar" size={14} color={colors.textMuted} />
-                    <Text style={{ color: startDate ? colors.textPrimary : colors.textMuted, fontSize: 12 }} numberOfLines={1}>
-                      {startDate ? startDate.toLocaleDateString('tr-TR') : t('common.select')}
-                    </Text>
-                  </Pressable>
-                </View>
-
-                {/* Bitiş Tarihi */}
-                <View style={styles.filterItemDate}>
-                  <Text style={[styles.filterLabel, { color: colors.textSecondary }]}>{t('dashboard.end_date')}</Text>
-                  <Pressable
-                    onPress={() => showDatePicker('end')}
-                    style={[styles.pickerContainer, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}
-                  >
-                    <Feather name="calendar" size={14} color={colors.textMuted} />
-                    <Text style={{ color: endDate ? colors.textPrimary : colors.textMuted, fontSize: 12 }} numberOfLines={1}>
-                      {endDate ? endDate.toLocaleDateString('tr-TR') : t('common.select')}
-                    </Text>
-                  </Pressable>
-                </View>
-              </View>
+              <Pressable
+                onPress={() => showDatePicker('end')}
+                style={[styles.dateChip, { backgroundColor: colors.surface, borderColor: endDate ? colors.primary : colors.border }]}
+              >
+                <Feather name="calendar" size={14} color={endDate ? colors.primary : colors.textMuted} />
+                <Text style={{ color: endDate ? colors.textPrimary : colors.textMuted, fontSize: 12, fontWeight: '600' }} numberOfLines={1}>
+                  {endDate ? endDate.toLocaleDateString(dateLocale) : t('dashboard.end_date')}
+                </Text>
+              </Pressable>
             </View>
 
-
-            {filteredEntries.length === 0 ? (
-              <Text style={{ color: colors.textMuted, padding: 10 }}>
-                {(selectedPlate || startDate || endDate)
-                  ? t('dashboard.no_filtered_records')
-                  : t('dashboard.no_records')}
-              </Text>
-            ) : (
-              <View style={styles.listWrapper}>
-                <ScrollView
-                  style={styles.scrollContainer}
-                  contentContainerStyle={styles.scrollContent}
-                  showsVerticalScrollIndicator={true}
-                  nestedScrollEnabled={true}
-                  scrollEventThrottle={16}
-                >
-                  <View style={styles.listContainer}>
-                    {displayedEntries.map((item: any) => {
-                      const vehicleId = item.vehicleId;
-                      const recordIndex = vehicleRecordIndices[vehicleId]?.[item.id] ?? 0;
-                      const totalRecords = vehicleRecordCounts[vehicleId] ?? 0;
-
-                      // Debug log
-                      if (__DEV__) {
-                        console.log(`[Dashboard] ${item.vehicle?.plate} - ${totalRecords} kayıt`);
-                      }
-
-                      return (
-                        <FuelRecordItem
-                          key={item.id}
-                          item={item}
-                          onDelete={handleDelete}
-                          onEdit={handleEdit}
-                          averageConsumption={vehicleAverageConsumption[item.vehicleId]}
-                          recordIndex={recordIndex}
-                          totalRecords={totalRecords}
-                        />
-                      );
-                    })}
-                  </View>
-                  {hasMore && (
-                    <Pressable
-                      onPress={handleLoadMore}
-                      style={{
-                        padding: 12,
-                        alignItems: 'center',
-                        backgroundColor: colors.surfaceAlt,
-                        borderRadius: 12,
-                        marginTop: 8,
-                      }}
-                    >
-                      <Text style={{ color: colors.primary, fontWeight: '600' }}>{t('dashboard.load_more')}</Text>
-                    </Pressable>
-                  )}
-                </ScrollView>
-              </View>
+            {hasActiveFilters && (
+              <Pressable onPress={handleClearFilters} style={[styles.clearFiltersButton, { borderColor: colors.border }]}>
+                <Feather name="x" size={14} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>{t('dashboard.clear_filters')}</Text>
+              </Pressable>
             )}
-          </SectionCard>
+          </View>
+
+          {filteredEntries.length === 0 ? (
+            <View style={[styles.emptyStateContainer, { backgroundColor: colors.surface }]}>
+              <View style={[styles.emptyStateIconBox, { backgroundColor: colors.primarySoft }]}>
+                <Ionicons
+                  name={hasActiveFilters ? 'search-outline' : 'speedometer-outline'}
+                  size={40}
+                  color={colors.primary}
+                />
+              </View>
+              <Text style={[styles.emptyStateTitle, { color: colors.textPrimary }]}>
+                {hasActiveFilters ? t('dashboard.no_filtered_records') : t('dashboard.empty_title')}
+              </Text>
+              <Text style={[styles.emptyStateMessage, { color: colors.textSecondary }]}>
+                {hasActiveFilters ? t('dashboard.clear_filters') : t('dashboard.empty_message')}
+              </Text>
+              {!hasActiveFilters && (
+                <Pressable
+                  onPress={() => router.push('/modal')}
+                  style={[styles.emptyStateButton, { backgroundColor: colors.primary }]}
+                >
+                  <Feather name="plus" size={16} color="#FFF" />
+                  <Text style={styles.emptyStateButtonText}>{t('dashboard.add_new_record')}</Text>
+                </Pressable>
+              )}
+            </View>
+          ) : (
+            <View style={styles.listContainer}>
+              {displayedEntries.map((item: any) => {
+                const vehicleId = item.vehicleId;
+                const recordIndex = vehicleRecordIndices[vehicleId]?.[item.id] ?? 0;
+                const totalRecords = vehicleRecordCounts[vehicleId] ?? 0;
+
+                return (
+                  <FuelRecordItem
+                    key={item.id}
+                    item={item}
+                    onDelete={handleDelete}
+                    onEdit={handleEdit}
+                    averageConsumption={vehicleAverageConsumption[item.vehicleId]}
+                    recordIndex={recordIndex}
+                    totalRecords={totalRecords}
+                  />
+                );
+              })}
+              {hasMore && (
+                <Pressable
+                  onPress={handleLoadMore}
+                  style={[styles.loadMoreButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                >
+                  <Text style={{ color: colors.primary, fontWeight: '700' }}>{t('dashboard.load_more')}</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
         </>
       )}
 
@@ -759,13 +764,13 @@ export default function DashboardScreen() {
                 style={[styles.controlButton, { backgroundColor: colors.surfaceAlt }]}
               >
                 <Feather name="chevrons-left" size={20} color={colors.primary} />
-                <Text style={[styles.controlText, { color: colors.textSecondary }]}>Önceki Ay</Text>
+                <Text style={[styles.controlText, { color: colors.textSecondary }]}>{t('dashboard.previous_month')}</Text>
               </Pressable>
               <Pressable
                 onPress={() => changeTempMonth(1)}
                 style={[styles.controlButton, { backgroundColor: colors.surfaceAlt }]}
               >
-                <Text style={[styles.controlText, { color: colors.textSecondary }]}>Sonraki Ay</Text>
+                <Text style={[styles.controlText, { color: colors.textSecondary }]}>{t('dashboard.next_month')}</Text>
                 <Feather name="chevrons-right" size={20} color={colors.primary} />
               </Pressable>
             </View>
@@ -782,7 +787,7 @@ export default function DashboardScreen() {
                 onPress={() => setTempDate(new Date())}
                 style={[styles.todayButton, { backgroundColor: colors.primary }]}
               >
-                <Text style={styles.todayText}>Bugün</Text>
+                <Text style={styles.todayText}>{t('dashboard.today')}</Text>
               </Pressable>
               <Pressable
                 onPress={() => changeTempDate(1)}
@@ -794,7 +799,7 @@ export default function DashboardScreen() {
 
             {/* Hızlı Seçim */}
             <View style={styles.quickSelect}>
-              <Text style={[styles.quickSelectLabel, { color: colors.textSecondary }]}>Hızlı Seçim:</Text>
+              <Text style={[styles.quickSelectLabel, { color: colors.textSecondary }]}>{t('dashboard.filter')}</Text>
               <View style={styles.quickSelectButtons}>
                 <Pressable
                   onPress={() => {
@@ -804,7 +809,7 @@ export default function DashboardScreen() {
                   }}
                   style={[styles.quickButton, { backgroundColor: colors.surfaceAlt }]}
                 >
-                  <Text style={[styles.quickButtonText, { color: colors.textPrimary }]}>-7 Gün</Text>
+                  <Text style={[styles.quickButtonText, { color: colors.textPrimary }]}>{t('dashboard.last_7_days')}</Text>
                 </Pressable>
                 <Pressable
                   onPress={() => {
@@ -814,7 +819,7 @@ export default function DashboardScreen() {
                   }}
                   style={[styles.quickButton, { backgroundColor: colors.surfaceAlt }]}
                 >
-                  <Text style={[styles.quickButtonText, { color: colors.textPrimary }]}>-30 Gün</Text>
+                  <Text style={[styles.quickButtonText, { color: colors.textPrimary }]}>{t('dashboard.last_30_days')}</Text>
                 </Pressable>
               </View>
             </View>
@@ -858,21 +863,46 @@ const VehicleInfo = ({ label, value, colors }: VehicleInfoProps) => {
 
 const styles = StyleSheet.create({
   headerArea: {
-    gap: 8,
-    marginBottom: 12,
+    gap: 6,
+    marginBottom: 4,
   },
   heading: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: -0.4,
   },
   subtitle: {
     fontSize: 14,
     lineHeight: 20,
   },
-  topButtonsContainer: {
+  statsRow: {
     flexDirection: 'row',
     gap: 8,
-    marginBottom: 16,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    gap: 4,
+  },
+  statCardLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  statCardValue: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  topButtonsContainer: {
+    flexDirection: 'row',
+    gap: 4,
+    padding: 4,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   topButton: {
     flex: 1,
@@ -882,12 +912,11 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 10,
     paddingHorizontal: 8,
-    borderRadius: 12,
-    borderWidth: 1,
+    borderRadius: 10,
   },
   topButtonLabel: {
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: 13,
+    fontWeight: '700',
   },
   vehicleButton: {
     flexDirection: 'row',
@@ -976,49 +1005,85 @@ const styles = StyleSheet.create({
   addRecordButtonsContainer: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 16,
   },
   addRecordButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 8,
     paddingVertical: 14,
     borderRadius: 14,
   },
   addRecordButtonLabel: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
   },
-  scanButton: {
+  scanIconButton: {
+    width: 50,
+    borderRadius: 14,
     borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vehicleTabsRow: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  vehicleTabsScroll: {
+    flexGrow: 0,
+  },
+  vehicleChips: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingRight: 8,
+  },
+  vehicleChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
+  },
+  vehicleChipText: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   filterContainer: {
-    marginTop: 12,
-    gap: 10,
+    gap: 8,
   },
   sortRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 8,
   },
   sortButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
   },
   sortButtonText: {
     fontSize: 13,
     fontWeight: '600',
   },
+  dateChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
   clearFiltersButton: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
@@ -1027,48 +1092,53 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
   },
-  filterRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'flex-end',
+  emptyStateContainer: {
+    borderRadius: 20,
+    padding: 28,
+    alignItems: 'center',
+    gap: 12,
   },
-  filterItemPlate: {
-    flex: 1.2,
-    gap: 4,
+  emptyStateIconBox: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
-  filterItemDate: {
-    flex: 1,
-    gap: 4,
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
   },
-  filterLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
+  emptyStateMessage: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
   },
-  pickerContainer: {
+  emptyStateButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 4,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    height: 40,
+    gap: 8,
+    marginTop: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 12,
   },
-  listWrapper: {
-    marginTop: 16,
-    height: 420, // Sabit yükseklik - scroll için gerekli
-  },
-  scrollContainer: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 16,
+  emptyStateButtonText: {
+    color: '#FFF',
+    fontSize: 15,
+    fontWeight: '700',
   },
   listContainer: {
-    gap: 14,
+    gap: 10,
+    paddingBottom: 8,
+  },
+  loadMoreButton: {
+    padding: 14,
+    alignItems: 'center',
+    borderRadius: 14,
+    borderWidth: 1,
   },
   row: {
     flexDirection: 'row',
