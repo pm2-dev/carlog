@@ -40,6 +40,10 @@
   },
   "submit": {
     "production": {
+      "ios": {
+        "ascAppId": "6755984009",
+        "appleTeamId": "5SZ867WUZ4"
+      },
       "android": {
         "track": "production"
       }
