@@ -22,7 +22,7 @@ export function LoginRequiredOverlay({ featureName, showAsScreen = true }: Login
   const handleLogin = async () => {
     // Guest mode'dan çıkış yap ve login sayfasına yönlendir
     await logout();
-    router.replace('/sign-in');
+    router.replace('/(tabs)');
   };
 
   const content = (

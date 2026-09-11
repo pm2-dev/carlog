@@ -11,7 +11,7 @@ import { useAppTheme } from '@/hooks/useAppTheme';
 import { useTranslation } from '@/hooks/useTranslation';
 
 const TUTORIAL_STORAGE_KEY = '@carlog_tutorial_completed';
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export type TutorialStep = {
   id: string;
@@ -34,111 +34,102 @@ export type TutorialStep = {
 type AppTutorialProps = {
   steps: TutorialStep[];
   onComplete: () => void;
-  visible: boolean;
 };
 
-export const AppTutorial = ({ steps, onComplete, visible }: AppTutorialProps) => {
+export const AppTutorial = ({ steps, onComplete }: AppTutorialProps) => {
   const { colors } = useAppTheme();
   const { t } = useTranslation();
   const [currentStep, setCurrentStep] = useState(0);
 
+  const finishTutorial = () => {
+    onComplete();
+    AsyncStorage.setItem(TUTORIAL_STORAGE_KEY, 'true').catch((error) => {
+      console.error('Error saving tutorial status:', error);
+    });
+  };
+
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
-    } else {
-      handleComplete();
+      return;
     }
+    finishTutorial();
   };
 
-  const handleSkip = async () => {
-    await AsyncStorage.setItem(TUTORIAL_STORAGE_KEY, 'true');
-    onComplete();
-  };
+  if (steps.length === 0) return null;
 
-  const handleComplete = async () => {
-    await AsyncStorage.setItem(TUTORIAL_STORAGE_KEY, 'true');
-    onComplete();
-  };
-
-  if (!visible || steps.length === 0) return null;
-
-  const step = steps[currentStep];
+  const step = steps[Math.min(currentStep, steps.length - 1)];
 
   return (
-    <View style={styles.overlay} pointerEvents="box-none">
-        {/* Görsel karartma — dokunuşları engellemez, tab bar tıklanabilir kalır */}
-        <View
-          pointerEvents="none"
-          style={[styles.darkOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.88)' }]}>
-          {step.highlightArea && (
+    <View style={styles.overlay} pointerEvents="auto">
+      <View style={[styles.darkOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.88)' }]}>
+        {step.highlightArea && (
+          <View
+            style={[
+              styles.highlightHole,
+              {
+                top: step.highlightArea.top,
+                left: step.highlightArea.left,
+                width: step.highlightArea.width,
+                height: step.highlightArea.height,
+                borderColor: colors.primary,
+                borderWidth: 3,
+                borderRadius: 12,
+                backgroundColor: 'transparent',
+              },
+            ]}
+          />
+        )}
+      </View>
+
+      <View
+        style={[
+          styles.tooltip,
+          {
+            backgroundColor: colors.surface,
+            ...step.position,
+          },
+        ]}>
+        <View style={styles.tooltipHeader}>
+          <View style={[styles.progressBar, { backgroundColor: colors.surfaceAlt }]}>
             <View
               style={[
-                styles.highlightHole,
+                styles.progressFill,
                 {
-                  top: step.highlightArea.top,
-                  left: step.highlightArea.left,
-                  width: step.highlightArea.width,
-                  height: step.highlightArea.height,
-                  borderColor: colors.primary,
-                  borderWidth: 3,
-                  borderRadius: 12,
-                  backgroundColor: 'transparent',
+                  backgroundColor: colors.primary,
+                  width: `${((currentStep + 1) / steps.length) * 100}%`,
                 },
               ]}
             />
-          )}
-        </View>
-
-        {/* Tooltip — sadece bu alan dokunuş alır */}
-        <View
-          pointerEvents="auto"
-          style={[
-            styles.tooltip,
-            {
-              backgroundColor: colors.surface,
-              ...step.position,
-            },
-          ]}>
-          <View style={styles.tooltipHeader}>
-            <View style={[styles.progressBar, { backgroundColor: colors.surfaceAlt }]}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    backgroundColor: colors.primary,
-                    width: `${((currentStep + 1) / steps.length) * 100}%`,
-                  },
-                ]}
-              />
-            </View>
-            <Text style={[styles.stepIndicator, { color: colors.primary }]}>
-              {t('tutorial.step_indicator', { current: currentStep + 1, total: steps.length })}
-            </Text>
           </View>
-
-          <Text style={[styles.tooltipTitle, { color: colors.textPrimary }]}>{step.title}</Text>
-          <Text style={[styles.tooltipDescription, { color: colors.textSecondary }]}>
-            {step.description}
+          <Text style={[styles.stepIndicator, { color: colors.primary }]}>
+            {t('tutorial.step_indicator', { current: currentStep + 1, total: steps.length })}
           </Text>
-
-          <View style={styles.buttonRow}>
-            <Pressable
-              onPress={handleSkip}
-              style={[styles.button, styles.skipButton, { borderColor: colors.border }]}>
-              <Text style={[styles.skipButtonText, { color: colors.textSecondary }]}>
-                {t('tutorial.skip')}
-              </Text>
-            </Pressable>
-
-            <Pressable
-              onPress={handleNext}
-              style={[styles.button, styles.nextButton, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.nextButtonText, { color: '#FFFFFF' }]}>
-                {currentStep === steps.length - 1 ? t('tutorial.start') : t('tutorial.next')}
-              </Text>
-            </Pressable>
-          </View>
         </View>
+
+        <Text style={[styles.tooltipTitle, { color: colors.textPrimary }]}>{step.title}</Text>
+        <Text style={[styles.tooltipDescription, { color: colors.textSecondary }]}>
+          {step.description}
+        </Text>
+
+        <View style={styles.buttonRow}>
+          <Pressable
+            onPress={finishTutorial}
+            style={[styles.button, styles.skipButton, { borderColor: colors.border }]}>
+            <Text style={[styles.skipButtonText, { color: colors.textSecondary }]}>
+              {t('tutorial.skip')}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={handleNext}
+            style={[styles.button, styles.nextButton, { backgroundColor: colors.primary }]}>
+            <Text style={[styles.nextButtonText, { color: '#FFFFFF' }]}>
+              {currentStep === steps.length - 1 ? t('tutorial.start') : t('tutorial.next')}
+            </Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 };
@@ -179,7 +170,8 @@ export const useShouldShowTutorial = () => {
 const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    zIndex: 1,
+    zIndex: 100,
+    elevation: 100,
   },
   darkOverlay: {
     ...StyleSheet.absoluteFillObject,

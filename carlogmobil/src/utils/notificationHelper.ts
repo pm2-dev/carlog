@@ -23,6 +23,14 @@ async function ensureAndroidChannels() {
   });
 }
 
+export async function clearAppIconBadge(): Promise<void> {
+  try {
+    await Notifications.setBadgeCountAsync(0);
+  } catch (error) {
+    console.warn('Uygulama rozeti sıfırlanamadı:', error);
+  }
+}
+
 export async function ensureLocalNotificationPermissions(): Promise<boolean> {
   await ensureAndroidChannels();
 
@@ -34,11 +42,11 @@ export async function ensureLocalNotificationPermissions(): Promise<boolean> {
   let finalStatus = existingStatus;
   if (existingStatus !== 'granted') {
     const { status } = await Notifications.requestPermissionsAsync({
-      ios: {
-        allowAlert: true,
-        allowBadge: true,
-        allowSound: true,
-      },
+        ios: {
+          allowAlert: true,
+          allowBadge: false,
+          allowSound: true,
+        },
     });
     finalStatus = status;
   }
@@ -68,7 +76,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       const { status } = await Notifications.requestPermissionsAsync({
         ios: {
           allowAlert: true,
-          allowBadge: true,
+          allowBadge: false,
           allowSound: true,
         },
       });
@@ -156,7 +164,7 @@ export async function scheduleReminderNotification(
           sound: true,
           priority: Notifications.AndroidNotificationPriority.HIGH,
           data: data || {},
-          badge: 1,
+          badge: 0,
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -244,9 +252,11 @@ export async function presentLocalNotification(
         body,
         sound: true,
         data: data || {},
+        badge: 0,
       },
       trigger: null,
     });
+    await clearAppIconBadge();
   } catch (error) {
     console.error('Yerel bildirim gösterilemedi:', error);
   }

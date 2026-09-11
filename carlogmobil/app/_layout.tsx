@@ -6,31 +6,12 @@ import 'react-native-reanimated';
 import { useEffect, useState, Component, ErrorInfo, ReactNode } from 'react';
 import * as Notifications from 'expo-notifications';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import Constants from 'expo-constants';
 
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useTranslation } from '@/hooks/useTranslation';
 import { AppProviders } from '@/providers/AppProviders';
 import { useAuthStore } from '@/store/authStore';
-
-const isExpoGo = Constants.appOwnership === 'expo';
-
-if (!isExpoGo) {
-  import('react-native-google-mobile-ads')
-    .then((mobileAds) => {
-      mobileAds.default()
-        .initialize()
-        .then((adapterStatuses) => {
-          console.log('AdMob SDK initialized:', adapterStatuses);
-        })
-        .catch((error) => {
-          console.error('AdMob SDK initialization failed:', error);
-        });
-    })
-    .catch((error) => {
-      console.log('AdMob module not available (Expo Go):', error.message);
-    });
-}
+import { clearAppIconBadge } from '@/utils/notificationHelper';
 
 try {
   Notifications.setNotificationHandler({
@@ -101,6 +82,7 @@ function RootNavigator() {
     const bootstrap = async () => {
       try {
         await checkAuthStatus();
+        await clearAppIconBadge();
       } catch (error) {
         console.error('Bootstrap failed:', error);
       } finally {
@@ -121,28 +103,40 @@ function RootNavigator() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={navigationTheme}>
-        <Stack initialRouteName="(tabs)" screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen
-            name="modal"
-            options={{ presentation: 'modal', headerShown: true, title: t('common.quick_action') }}
-          />
-        </Stack>
-      </ThemeProvider>
+    <ThemeProvider value={navigationTheme}>
+      <Stack
+        initialRouteName="(tabs)"
+        screenOptions={{
+          headerShown: false,
+          animation: 'none',
+          gestureEnabled: false,
+          fullScreenGestureEnabled: false,
+        }}>
+        <Stack.Screen name="(tabs)" options={{ gestureEnabled: false, headerBackVisible: false }} />
+        <Stack.Screen
+          name="modal"
+          options={{
+            presentation: 'modal',
+            animation: 'slide_from_bottom',
+            headerShown: true,
+            title: t('common.quick_action'),
+            gestureEnabled: true,
+          }}
+        />
+      </Stack>
       <StatusBar style={statusBarStyle} />
-    </GestureHandlerRootView>
+    </ThemeProvider>
   );
 }
 
 export default function RootLayout() {
   return (
-    <ErrorBoundary>
-      <AppProviders>
-        <RootNavigator />
-      </AppProviders>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
+        <AppProviders>
+          <RootNavigator />
+        </AppProviders>
+      </ErrorBoundary>
+    </GestureHandlerRootView>
   );
 }

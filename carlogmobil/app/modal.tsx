@@ -21,12 +21,10 @@ import { Screen } from '@/components/Screen';
 import { useAppTheme } from '@/hooks/useAppTheme';
 import { useTranslation } from '@/hooks/useTranslation';
 import type { ThemeColors } from '@/theme';
-import { AdBanner } from '@/components/AdBanner';
 import type { Vehicle, FuelEntry, FuelType } from '@/types/domain';
 import { useVehicles } from '@/hooks/queries/useVehicleQueries';
 import { useCreateFuelEntry, useUpdateFuelEntry, useFuelEntries } from '@/hooks/queries/useFuelQueries';
 import { useVehicleStats } from '@/hooks/queries/useReportQueries';
-import { usePurchase } from '@/contexts/PurchaseContext';
 
 const parseNumber = (value: string) => {
   if (!value) return 0;
@@ -60,7 +58,6 @@ export default function ModalScreen() {
   const { colors, resolvedScheme } = useAppTheme();
   const isDark = resolvedScheme === 'dark';
   const { t } = useTranslation();
-  const { isPremium } = usePurchase();
   const params = useLocalSearchParams<{ 
     editId?: string;
     scannedTotalCost?: string;
@@ -651,11 +648,6 @@ export default function ModalScreen() {
               colors={colors}
               icon="document-text"
             />
-          </View>
-
-          {/* Ad Banner */}
-          <View style={styles.adContainer}>
-            <AdBanner isPremium={isPremium} />
           </View>
 
           {/* Summary Card */}

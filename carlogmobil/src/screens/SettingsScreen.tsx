@@ -16,7 +16,6 @@ import { NotificationLog } from '@/types/domain';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useCurrency } from '@/hooks/useCurrency';
 import { SUPPORTED_LANGUAGES } from '@/i18n/languages';
-import { usePurchase } from '@/contexts/PurchaseContext';
 
 const THEME_OPTIONS: ThemePreference[] = ['system', 'light', 'dark'];
 
@@ -24,7 +23,6 @@ export default function SettingsScreen() {
   const { colors, preference, setPreference } = useAppTheme();
   const { t, locale, changeLanguage } = useTranslation();
   const { currencySymbol, currencyCode, changeCurrency, availableCurrencies } = useCurrency();
-  const { isPremium, isLoading: isPurchasing, purchaseRemoveAds, restorePurchases } = usePurchase();
   const [isNotificationsModalVisible, setNotificationsModalVisible] = useState(false);
   const [isLanguageExpanded, setLanguageExpanded] = useState(false);
   const [isCurrencyExpanded, setCurrencyExpanded] = useState(false);
@@ -91,29 +89,6 @@ export default function SettingsScreen() {
 
   const handleLanguageChange = async (languageCode: string) => {
     await changeLanguage(languageCode);
-  };
-
-  const handlePurchaseRemoveAds = async () => {
-    try {
-      await purchaseRemoveAds();
-      // Başarılı mesajı purchaseUpdatedListener içinde gösterilecek
-      // Sadece hata durumunda burada mesaj göster
-    } catch (error) {
-      // Kullanıcı iptal etmediyse hata mesajı göster
-      const iapError = error as any;
-      if (iapError?.code !== 'IAP_USER_CANCELLED') {
-        Alert.alert(t('common.error'), t('settings.purchase_error'));
-      }
-    }
-  };
-
-  const handleRestorePurchases = async () => {
-    try {
-      await restorePurchases();
-      Alert.alert(t('common.success'), t('settings.restore_success'));
-    } catch (error) {
-      Alert.alert(t('common.error'), t('settings.restore_error'));
-    }
   };
 
   return (
@@ -264,76 +239,6 @@ export default function SettingsScreen() {
           )}
         </View>
       </View>
-
-      {/* Reklam Kaldırma - Apple Guidelines: Guest kullanıcılar da satın alabilmeli */}
-      <SectionCard>
-        <SectionHeader subtitle={t('settings.remove_ads_management')}>
-          {t('settings.remove_ads')}
-        </SectionHeader>
-        
-        {isPremium ? (
-          <View style={[styles.premiumCard, { backgroundColor: '#D1FAE5', borderColor: '#10B981' }]}>
-            <View style={styles.premiumHeader}>
-              <View style={[styles.premiumIconBox, { backgroundColor: '#10B981' }]}>
-                <Ionicons name="checkmark-circle" size={28} color="#FFF" />
-              </View>
-              <View style={styles.premiumContent}>
-                <Text style={[styles.premiumTitle, { color: '#065F46' }]}>
-                  {t('settings.premium_active')}
-                </Text>
-                <Text style={[styles.premiumDescription, { color: '#047857' }]}>
-                  {t('settings.premium_desc')}
-                </Text>
-              </View>
-            </View>
-          </View>
-        ) : (
-          <View>
-            <View style={[styles.subscriptionCard, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-              <View style={styles.subscriptionHeader}>
-                <View style={[styles.subscriptionIcon, { backgroundColor: colors.primary + '20' }]}>
-                  <Ionicons name="sparkles" size={24} color={colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.subscriptionTitle, { color: colors.textPrimary }]}>
-                    {t('settings.remove_ads')}
-                  </Text>
-                  <Text style={[styles.subscriptionDescription, { color: colors.textSecondary }]}>
-                    {t('settings.remove_ads_desc')}
-                  </Text>
-                </View>
-              </View>
-              
-              <Pressable
-                onPress={handlePurchaseRemoveAds}
-                disabled={isPurchasing}
-                style={[styles.subscriptionButton, { backgroundColor: colors.primary }]}
-              >
-                {isPurchasing ? (
-                  <ActivityIndicator color="#FFF" />
-                ) : (
-                  <>
-                    <Ionicons name="cart-outline" size={18} color="#FFF" />
-                    <Text style={styles.subscriptionButtonText}>
-                      {t('settings.purchase_now')}
-                    </Text>
-                  </>
-                )}
-              </Pressable>
-            </View>
-
-            <Pressable
-              onPress={handleRestorePurchases}
-              disabled={isPurchasing}
-              style={[styles.restoreButton, { marginTop: 12 }]}
-            >
-              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>
-                {t('settings.restore_purchases')}
-              </Text>
-            </Pressable>
-          </View>
-        )}
-      </SectionCard>
 
       {/* Uygulama Ayarları */}
       <SectionCard>

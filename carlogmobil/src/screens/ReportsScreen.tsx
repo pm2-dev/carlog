@@ -192,9 +192,6 @@ export default function ReportsScreen() {
         </Text>
       </View>
 
-      {/* AdMob Reklam Banner */}
-      {/* <AdBanner isPremium={isPremium} /> */}
-
       {/* Araç Seçimi (Basit Tab) */}
       <View style={styles.vehicleTabsRow}>
         <ScrollView
@@ -242,7 +239,7 @@ export default function ReportsScreen() {
             {t('reports.no_records_message')}
           </Text>
           <Pressable
-            onPress={() => router.push('/(tabs)')}
+            onPress={() => router.navigate('/(tabs)')}
             style={[styles.emptyStateButton, { backgroundColor: colors.primary }]}
           >
             <Ionicons name="add-circle-outline" size={20} color="#FFF" />
