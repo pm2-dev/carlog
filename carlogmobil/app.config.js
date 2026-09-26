@@ -16,7 +16,7 @@ module.exports = () => {
           ...appConfig.expo.ios.infoPlist,
           // Varsayılan dil ve desteklenen diller
           CFBundleDevelopmentRegion: "en",
-          CFBundleLocalizations: ["en", "tr"],
+          CFBundleLocalizations: ["en", "en-GB", "es", "pt", "de", "fr", "it", "ro", "tr", "hi", "ru"],
           
           // Konum izinleri - Varsayılan İngilizce (Türkçe InfoPlist.strings ile)
           NSLocationWhenInUseUsageDescription: "Location permission is required to show nearby gas and charging stations.",

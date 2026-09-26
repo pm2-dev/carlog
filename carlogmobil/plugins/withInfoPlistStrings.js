@@ -4,7 +4,8 @@ const path = require('path');
 
 /**
  * iOS için InfoPlist.strings dosyalarını oluşturan Expo Config Plugin
- * Bu plugin TR ve EN dillerinde izin mesajlarını yerelleştirir
+ * Bu plugin desteklenen diller için InfoPlist.strings üretir.
+ * Türkçe metinler yerelleştirilir; diğer diller İngilizce metni kullanır.
  * Apple App Store için varsayılan dil İngilizce olmalıdır
  */
 
@@ -89,29 +90,33 @@ const withInfoPlistStrings = (config) => {
         'utf8'
       );
 
-      // EN yerelleştirme dosyası
-      const enLocalizationPath = path.join(iosPath, 'en.lproj');
-      if (!fs.existsSync(enLocalizationPath)) {
-        fs.mkdirSync(enLocalizationPath, { recursive: true });
-      }
-      fs.writeFileSync(
-        path.join(enLocalizationPath, 'InfoPlist.strings'),
-        enInfoPlistStrings,
-        'utf8'
-      );
+      const localizations = {
+        en: enInfoPlistStrings,
+        'en-GB': enInfoPlistStrings,
+        es: enInfoPlistStrings,
+        pt: enInfoPlistStrings,
+        de: enInfoPlistStrings,
+        fr: enInfoPlistStrings,
+        it: enInfoPlistStrings,
+        ro: enInfoPlistStrings,
+        tr: trInfoPlistStrings,
+        hi: enInfoPlistStrings,
+        ru: enInfoPlistStrings,
+      };
 
-      // TR yerelleştirme dosyası
-      const trLocalizationPath = path.join(iosPath, 'tr.lproj');
-      if (!fs.existsSync(trLocalizationPath)) {
-        fs.mkdirSync(trLocalizationPath, { recursive: true });
+      for (const [locale, contents] of Object.entries(localizations)) {
+        const localizationPath = path.join(iosPath, `${locale}.lproj`);
+        if (!fs.existsSync(localizationPath)) {
+          fs.mkdirSync(localizationPath, { recursive: true });
+        }
+        fs.writeFileSync(
+          path.join(localizationPath, 'InfoPlist.strings'),
+          contents,
+          'utf8'
+        );
       }
-      fs.writeFileSync(
-        path.join(trLocalizationPath, 'InfoPlist.strings'),
-        trInfoPlistStrings,
-        'utf8'
-      );
 
-      console.log('✅ InfoPlist.strings dosyaları oluşturuldu (Base, EN & TR)');
+      console.log('✅ InfoPlist.strings dosyaları oluşturuldu:', Object.keys(localizations).join(', '));
 
       return config;
     },

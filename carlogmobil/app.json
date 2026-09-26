@@ -19,7 +19,16 @@
         "CFBundleDevelopmentRegion": "en",
         "CFBundleLocalizations": [
           "en",
-          "tr"
+          "en-GB",
+          "es",
+          "pt",
+          "de",
+          "fr",
+          "it",
+          "ro",
+          "tr",
+          "hi",
+          "ru"
         ],
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true
